@@ -1,9 +1,10 @@
-#include <ElcanoSerial.h>
-
 #include <Common.h>
 #include <Matrix.h>
-#include <ElcanoSerial.h>
+//#include <ElcanoSerial.h>
 #include <SPI.h>
+// Pooja - The baudrate constant was moved from the ElcanoSerial.h to
+// the Elcano_C3 Pilot.ino 
+const int32_t baudrate = 74800;
 using namespace elcano;
 /*
 // Elcano Contol Module C3: Pilot.
@@ -17,8 +18,12 @@ serial line. The format of the DRIVE command is documented in the C1 code.
 [in] Digital Signal 0: J1 pin 1 (RxD) Serial signal from C4 Path planner, which passes on
 data from C6 Navigator
 */
-SerialData data;
-ParseState ps;
+/**
+ * Pooja - ElcanoSerial and ParseState has been commented out as ElcanoSerial.h 
+ * is not to be used 
+ */
+/*SerialData data;
+ParseState ps;*/
 // TargetLocation struct is used to store the data of each TargetLocation of the path given by the planner.
 // We create a new struct becuase the SerialData should only be used to send data.
 struct TargetLocation
@@ -380,7 +385,13 @@ private:
  * This is done for loose coupling. If we need to change the point data stored 
  * locally, we don't need to try to change the elcano serial file.
  */
-bool ProcessTargetLocation(TargetLocation *currentTargetLocation, SerialData instructions)
+/**
+ * Pooja - This method takes in SerialData as the arguments
+ * Not sure what the function of this method is so need a way to replace 
+ * "SerialData instructions"
+ * Note: The Entire method commented out for now, need Rathtana to look into
+ */ 
+/*bool ProcessTargetLocation(TargetLocation *currentTargetLocation, SerialData instructions)
 {
   // Each statement checks that the data received is not int_max.
   if(instructions.speed_cmPs == 2147483648)
@@ -405,12 +416,15 @@ bool ProcessTargetLocation(TargetLocation *currentTargetLocation, SerialData ins
   currentTargetLocation->eastPos = instructions.posE_cm;
   currentTargetLocation->northPos = instructions.posN_cm;
   return true;
-}
+}*/
 bool ReadWaypoints(TargetLocation* TargetLocationArray)
 {
   //set up variables
   int count = 0;
-  SerialData dataRead;
+  /**
+   * Pooja - SerialData has been commented out to get rid of ElcanoSerial
+   */
+  //SerialData dataRead;
   TargetLocation currentTargetLocation;
   // loop until we hit the end of the data
    while(true)
@@ -418,8 +432,12 @@ bool ReadWaypoints(TargetLocation* TargetLocationArray)
     //check if we're done receiveing
 //    readSerial(&Serial1,&dataRead);
     // bad number there is no more data or end of data
-    ParseStateError r = ps.update();
-    if(r == ParseStateError::success)
+    /**
+     * ParseState and the corresponding if loop has been commented out 
+     * as ElcanoSerial.h is no longer to be used 
+     */
+    //ParseStateError r = ps.update();
+    /*if(r == ParseStateError::success)
     {
       if(dataRead.number >= 789 || count >= MAX_WAYPOINTS)
       {
@@ -439,7 +457,7 @@ bool ReadWaypoints(TargetLocation* TargetLocationArray)
         }
         // send back acknowledgement
       }
-    }
+    }*/
    }
    return true;
 }
@@ -460,17 +478,27 @@ void noCompasTurn(int degrees)
   float distance_mm = (degrees * turnDiameter_mm * PI) / 360;
   int time_ms = 1000 * (double)(distance_mm/speed_mmps);
   
-  SerialData command;
+/**
+ * Pooja - The following block of code below is commented out but not sure 
+ * whether "command.kind", "command.speed" and "command.angle_mDeg" would be needed 
+ * to look into when scheduling
+ * Need to look into - Rathtana
+ */
+  /*SerialData command;
   command.kind = MsgType::drive;
   command.speed_cmPs = 0;
   command.angle_mDeg = wheelAngle_deg * 1000;
-  command.write(&Serial1);
+  command.write(&Serial1);*/
 Serial.println("waiting");
 delay(1000);
 Serial.println("waiting");
 delay(1000);
   
-  command.speed_cmPs = speed_mmps/10;
+  /**
+   * Pooja - commented out the statments associated with command as it is used in 
+   * ElcanoSerial.h which is no longer to be used 
+   */
+  /*command.speed_cmPs = speed_mmps/10;
   command.angle_mDeg = wheelAngle_deg * 1000;
   command.write(&Serial1);
   Serial.println("Starting");
@@ -479,28 +507,38 @@ delay(1000);
   command.speed_cmPs = 0;
   command.angle_mDeg = 0;
   command.write(&Serial1);
-  Serial.println("Stopping");
+  Serial.println("Stopping");*/
 }
 // turn a number of degrees. Positive number for left, negative for right
 void turn(int turnAmount)
 {
-    SerialData command;
-    command.kind = MsgType::drive;
+    //Pooja - SerialData and command.kind has been commented out to remove it from ElcanoSerial.h 
+    //SerialData command;
+    //command.kind = MsgType::drive;
     while(true) // wait until information on the bearing is recieved by C6
     {
-      ParseStateError r = ps.update();
-      if(r == ParseStateError::success)
+      /**
+       * Pooja - Commented out ParseState and the if loop 
+       * as ElcanoSerial.h is no longer to be used 
+       */
+      //ParseStateError r = ps.update();
+      /*if(r == ParseStateError::success)
       {
         Serial1.end();
         Serial1.begin(baudrate);  // clear the buffer
         break;
-      }
+      }*/
       Serial.println("waiting for comms");
     }
-    int initialBearing = data.bearing_deg;
+    //Pooja - initialBearing is commented out as it uses serialData from ElcanoSerial.h
+    //int initialBearing = data.bearing_deg;
  
     // send a slow speed to C2 and either a left or a right turn
-    command.speed_cmPs = 500;
+    /**
+     * Pooja - Statements associated with Command.speed and command.angle_mDeg 
+     * has been commented out as ElcanoSerial.h is no longer to be used
+     */
+    /*command.speed_cmPs = 500;
    
     if(turnAmount < 0) 
     {
@@ -512,14 +550,18 @@ void turn(int turnAmount)
     }
     command.write(&Serial1); // send command
     int currentBearing = 0;
-    int oldBearing = 0;
+    int oldBearing = 0;*/
     
     // while direction not met
-    while(currentBearing < turnAmount)
+    /**
+       * Pooja - ParseStateError, if/else and while loop has been commented out 
+       * as ElcanoSerial.h is no longer to be used 
+       */
+    /*while(currentBearing < turnAmount)
     {
       command.write(&Serial1); // send command
-      ParseStateError r = ps.update();
-      if(r == ParseStateError::success)
+      //ParseStateError r = ps.update();
+      /*if(r == ParseStateError::success)
       {
         currentBearing = abs((data.bearing_deg - initialBearing));
         if(currentBearing > (360-turnAmount) 
@@ -532,12 +574,12 @@ void turn(int turnAmount)
       }
       oldBearing = currentBearing;
       Serial.println("keep turning");
-    }
+    }*/
     Serial.println("done");
     // send command to stop
-    command.speed_cmPs = 0;
-    command.angle_mDeg = 0;
-    command.write(&Serial1);
+    /*command.speed_cmPs = 0;
+    /command.angle_mDeg = 0;
+    command.write(&Serial1);*/
 }
 void squareRoutine(){
   long length_mm = 1000;     // default value
@@ -558,19 +600,29 @@ void moveFixedDistance(long length_mm, long speed_mms)
   Serial.println("starting move fixed distance");
   while(true)
   {
-    ParseStateError r = ps.update();
+    /**
+     * Pooja - ParseStateError and the if loop was commented out as ElcanoSerial.h 
+     * will no longer in use 
+     */
+    //ParseStateError r = ps.update();
 //    Serial.println("waiting for initial location: " + String(static_cast<int8_t>(r)));
-    if(r == ParseStateError::success)
+    /*if(r == ParseStateError::success)
     {
       Serial.println("got initial location");
       data.posE_cm /= 10000; // avoid overflow
       data.posN_cm /= 10000;
       break;
-    }
+    }*/
   }
-  double initialDistance_cm = sqrt(abs(abs(data.posE_cm) * abs(data.posE_cm) + abs(data.posN_cm) * abs(data.posN_cm)));
+  /** 
+   *  Pooja:
+   *    - uses SerialData from ElcanoSerial.h so initialDistance_cm is commented out 
+   *    - The entire while loop was commented out as a result as its check initialDistance_cm
+   *      is commented out 
+   */
+  //double initialDistance_cm = sqrt(abs(abs(data.posE_cm) * abs(data.posE_cm) + abs(data.posN_cm) * abs(data.posN_cm)));
 //  Serial.println(initialDistance_cm);
-  data.clear();
+  /*data.clear();
   data.kind = MsgType::drive;
   data.speed_cmPs = speed_mms/10; // The initial speed to send.
   data.angle_mDeg = 0; // what should this actually be
@@ -578,21 +630,31 @@ void moveFixedDistance(long length_mm, long speed_mms)
   double currentDistance_cm = 0;
   double length_cm = length_mm / 10;
   while(currentDistance_cm < length_cm + initialDistance_cm){
-    ParseStateError r = ps.update();
-    if(r == ParseStateError::success){
+    /**
+     * Pooja - Commented out ParseStateError and the entire if loop 
+     * as ElcanoSerial.h is no longer going to be in use. However, the function performed  
+     * under the if loop needs to be checked to see whether it is needed or no when designing 
+     * the scheduling system 
+     * Need to look into - Rathtana 
+     */
+    //ParseStateError r = ps.update();
+    /*if(r == ParseStateError::success){
       data.posE_cm /= 10000;
       data.posN_cm /= 10000;
       double currentLocation_cm = sqrt(abs(abs(data.posE_cm) * abs(data.posE_cm) + abs(data.posN_cm) * abs(data.posN_cm)));
       double delta_cm = abs(currentLocation_cm - initialDistance_cm);
       currentDistance_cm += delta_cm;
 //      Serial.println("Current: " + String(currentDistance_cm));
-    }    
-  }
+    }   
+  }*/
 //  Serial.println("Done moving fixed distance");
-  data.kind = MsgType::drive;
+  /**
+   * Pooja - commeneted out the next four lines of code as SerialData from ElcanoSerial.h is used 
+   */
+  /*data.kind = MsgType::drive;
   data.speed_cmPs = 0;
   data.angle_mDeg = 0;
-  data.write(&Serial1);
+  data.write(&Serial1);*/
 }
 /* This function will rotate the bike to the desired angle. 
  * This includes calculation of the difference in its current heading and the 
@@ -786,10 +848,14 @@ void setup()
     delay(800);
   }
   */
-  ps.dt       = &data;
+  /**
+   * Pooja - commented out the next four lines of code as it uses ParseState 
+   * from ElcanoSerial.h which is no longer to be used 
+   */
+  /*ps.dt       = &data;
   ps.input    = &Serial1;
   ps.output   = &Serial1;
-  ps.capture  = MsgType::seg;// | MsgType::sensor ;
+  ps.capture  = MsgType::seg;// | MsgType::sensor ;*/
 //  pinMode(8,OUTPUT);
 //  pinMode(13, OUTPUT);
 //  long length_mm = 2000;     // default value
@@ -822,18 +888,24 @@ void go20mNorth()
   Cubic2D path(start, end, 0, 90, 10); 
   Turn turns[100];
   path.getTurns(turns);
-  for(int i = 0; i < 100; i++)
+  /**
+   * Pooja - The entire block of code (for loop) has been commented out but not 
+   * not sure whether equivalents of "command.kind", "command.speed" and "command.angle_mDeg" 
+   * needs to be included when working on the scheduling system 
+   * Need to look into - Rathtana
+   */
+  /*for(int i = 0; i < 100; i++)
   {
     SerialData command;
     command.kind = MsgType::drive;
     command.speed_cmPs = 0; // The initial speed to send.
     command.angle_mDeg = turns[i].steeringAngle_deg * -1 * 5 * 1000; // the 5 is to exadurate it for more visual results
     //Serial.println(command.angle_mDeg);
-    command.write(&Serial1);
+      command.write(&Serial1);
 //    Serial.println(String(turns[i].distance_mm) + ", " + String(turns[i].steeringAngle_deg));
     delay(500);
     
-  }
+  }*/
 //  for(int i = 0; i < 100; i++)
 //  {
 //    Serial.println(String(path.valueAtTime(i/100.).x) + ", " + String(path.valueAtTime(i/100.).y));
@@ -843,9 +915,13 @@ bool lightState = LOW;
 void loop(void) 
 {
  
-ParseStateError r = ps.update();
+/**
+ * Pooja - commented out the ParseState error and the if/else loop associated with it as 
+ * ElcanoSerial.h is no longer to be used. 
+ */
+//ParseStateError r = ps.update();
 //if(Serial1.available() > 0){Serial.println((char) Serial1.read());}
-  if(r == ParseStateError::success)
+  /*if(r == ParseStateError::success)
   {
      Serial.println("time = " + String(millis()));
      Serial.println(String(static_cast<int8_t>(data.kind)) + " " + String(data.speed_cmPs) + " " + String(data.bearing_deg) + " " + String(data.number) + " " + String(data.posE_cm));
@@ -854,10 +930,14 @@ ParseStateError r = ps.update();
 //  digitalWrite(13, lightState);
   //-----------------------Output to C2-----------------------//
   else 
-  data.kind = MsgType::drive;
+  /**
+   * Pooja - commented out the next four lines of code as it uses SerialData
+   * from ElcanoSerial.h
+   */
+  /*data.kind = MsgType::drive;
   data.angle_mDeg = 0;
   data.speed_cmPs = 0;
-  data.write(&Serial1);
+  data.write(&Serial1);*/
 }
 //}
 //  //if not we set the steering angle and conitune turning.
