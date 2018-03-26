@@ -1,15 +1,27 @@
+#include <Conversion.h>
 #include <Common.h>
 #include <IO.h>
 
 #include <SPI.h>
 #include <SD.h>
-#include <ElcanoSerial.h>
+//#include <ElcanoSerial.h>
+
 
 byte rx_byte = 0;
+/** 
+ *  Pooja - baudrate constant has been moved to C4 planner.ino as it was defined 
+ *  in ElcanoSerial.h 
+ */
+const int32_t baudrate = 74800;
 
-using namespace elcano;
-SerialData data;
-ParseState ps;
+using namespace elcano; 
+// Commenting serialData out to remove the serial line 
+/**
+ * Pooja - Both Serial Data and ParseState are associated with the ElcanoSerial.h. 
+ * So, has been commented out 
+ */
+//SerialData data;
+//ParseState ps;
 
 #define PI ((float) 3.1415925)
 #ifndef NULL
@@ -31,7 +43,7 @@ long goal_lon[CONES] = { -122189963};
 //long goal_lat[CONES] = {  47621881,   47621825,   47623144,   47620616,   47621881};
 //long goal_lon[CONES] = {-122349894, -122352120, -122351987, -122351087, -122349894};
 /*  mph   mm/s
-     3    1341
+     3    1341f
      5    2235
      8    3576
      10   4470
@@ -87,7 +99,7 @@ void ConstructNetwork(junction *Map, int MapPoints)
       deltaY = Map[i].north_mm;
       deltaY -= Map[destination].north_mm;
 
-      Map[i].Distance[j] *= sqrt(deltaX * deltaX + deltaY * deltaY); //in rough scale
+      Map[i].Distance[j] += sqrt(deltaX * deltaX + deltaY * deltaY); //in rough scale
     }
   }
 }
@@ -204,61 +216,61 @@ long distance(int cur_node, int *k,  long cur_east_mm, long cur_north_mm, int* p
 
 void FindClosestRoad(waypoint *start, waypoint *road)  //populate road with best road from start
 {
-  //  long closest_mm = MAX_DISTANCE;
-  //  long dist;
-  //  int close_index;
-  //  int perCent;
-  //  long done = 1;//2000;
-  //  int i, node_successor;
-  //
-  //  for (i = 0; i < 5/*map_points*/; i++)  // find closest road.
-  //  {
-  //    dist = distance(i, &node_successor, start->east_mm, start->north_mm, &perCent); //next node to visit
-  ////    Serial.println("Start : Latitude " + String(start->latitude) + "\t Longitude " + String(start->longitude) + "\t Dist "
-  ////      + String(dist));
-  //
-  //      if (abs(dist) < abs(closest_mm))
-  //      {
-  //        close_index = node_successor;
-  //        closest_mm = dist;
-  //        done = 1;// perCent; //Not really true amount of nodes done?
-  //        road->index = i;
-  //        road->sigma_mm = node_successor;
-  //      }
-  //  }
-  //  if (closest_mm < MAX_DISTANCE)
-  //  {
-  //    i = road->index; //0
-  //    node_successor = close_index; //0
-  //    road->east_mm =  Nodes[i].east_mm  +  done *(Nodes[node_successor].east_mm  - Nodes[i].east_mm) / 100;
-  //    road->north_mm = Nodes[i].north_mm + done *(Nodes[node_successor].north_mm - Nodes[i].north_mm) / 100;
-  // }
-  // else
-  // {
-  //   for (i = 0; i < 5/*map_points*/; i++) // find closest node
-  //   {
-  ////      Serial.println("I got here");
-  //      dist = start->distance_mm(Nodes[i].east_mm, Nodes[i].north_mm);
-  //
-  //      if (dist < closest_mm)
-  //      {
-  //          close_index = i;
-  //          closest_mm = dist;
-  //      }
-  //   }
-  //    road->index = road->sigma_mm = close_index;
-  //    road->east_mm =  Nodes[close_index].east_mm;
-  //    road->north_mm = Nodes[close_index].north_mm;
-  //   }
-  //
-  //  road->Evector_x1000 = 1000;
-  //  road->Nvector_x1000 = 0;
-  //  road->time_ms = 0;
-  //  road->speed_mmPs = DESIRED_SPEED_mmPs;
+      long closest_mm = MAX_DISTANCE;
+      long dist;
+      int close_index;
+      int perCent;
+      long done = 1;//2000;
+      int i, node_successor;
+    
+      for (i = 0; i < 5/*map_points*/; i++)  // find closest road.
+      {
+        dist = distance(i, &node_successor, start->east_mm, start->north_mm, &perCent); //next node to visit
+          Serial.println("Start : Latitude " + String(start->latitude) + "\t Longitude " + String(start->longitude) + "\t Dist "
+            + String(dist));
+  
+          if (abs(dist) < abs(closest_mm))
+          {
+            close_index = node_successor;
+            closest_mm = dist;
+            done = 1;// perCent; //Not really true amount of nodes done?
+            road->index = i;
+            road->sigma_mm = node_successor;
+          }
+      }
+      if (closest_mm < MAX_DISTANCE)
+      {
+        i = road->index; //0
+        node_successor = close_index; //0
+        road->east_mm =  Nodes[i].east_mm  +  done *(Nodes[node_successor].east_mm  - Nodes[i].east_mm) / 100;
+        road->north_mm = Nodes[i].north_mm + done *(Nodes[node_successor].north_mm - Nodes[i].north_mm) / 100;
+     }
+     else
+     {
+       for (i = 0; i < 5/*map_points*/; i++) // find closest node
+       {
+          //Serial.println("I got here");
+          dist = start->distance_mm(Nodes[i].east_mm, Nodes[i].north_mm);
+    
+          if (dist < closest_mm)
+          {
+              close_index = i;
+              closest_mm = dist;
+          }
+       }
+        road->index = road->sigma_mm = close_index;
+        road->east_mm =  Nodes[close_index].east_mm;
+        road->north_mm = Nodes[close_index].north_mm;
+       }
+    
+      road->Evector_x1000 = 1000;
+      road->Nvector_x1000 = 0;
+      road->time_ms = 0;
+      road->speed_mmPs = DESIRED_SPEED_mmPs;
 
-  //  Test FindClosest Road:
-  //  Serial.println("Distance " + String(dist));
-  //  Serial.println("Road :  East_mm " + String(road->east_mm) + "\t North_mm " + String(road->north_mm));
+      //Test FindClosest Road:
+      Serial.println("Distance " + String(dist));
+      Serial.println("Road :  East_mm " + String(road->east_mm) + "\t North_mm " + String(road->north_mm));
 
 }
 
@@ -398,7 +410,7 @@ int FindPath(waypoint *start, waypoint *destination)//While OpenSet is not empty
     if (BestID == destination->index || BestID == destination->sigma_mm)// Done:: reached the goal!!
     {
 
-      //       return BuildPath(BestID, start, destination);   // Construct path backward to start.
+             return BuildPath(BestID, start, destination);   // Construct path backward to start.
       return 5;
     }
 
@@ -492,7 +504,8 @@ int PlanPath (waypoint *start, waypoint *destination)
 /*---------------------------------------------------------------------------------------*/
 
 // Transmit the path to C3 Pilot over a serial line.
-void SendPath(waypoint *course, int count)
+// Pooja - This method was commented out to remove the serial connection
+/*void SendPath(waypoint *course, int count)
 {
 
   SerialData results;
@@ -511,22 +524,8 @@ void SendPath(waypoint *course, int count)
 
   }
 
-}
+}*/
 
-//Converts provided Longitude and Latitude to MM
-boolean convertLatLonToMM(long latitude, long longitude) {
-  long scaledOriginLat = LATITUDE_ORIGIN * 1000000;
-  long scaledOriginLon = LONGITUDE_ORIGIN * 1000000;
-
-  double dLat = (latitude) * (PI / 180.0) - (scaledOriginLat) * (PI / 180.0);
-  double dLon = latitude * (PI / 180.0) - scaledOriginLon * (PI / 180.0);
-
-  Serial.println("dLat = " + String(dLat) + " dLon = " + String(dLon));
-  double soln = sin(dLat / 2) * cos(dLat / 2) + cos(scaledOriginLat * PI / 180) * cos(latitude * PI / 180) * sin(dLon / 2) * sin(dLon / 2);
-  double ans = 2 * atan2(sqrt(soln), sqrt(1 - soln));
-  double finalAns = EARTH_RADIUS_MM * ans;
-  return true;
-}
 /*---------------------------------------------------------------------------------------*/
 // LoadMap
 // Loads the map nodes from a file.
@@ -852,7 +851,7 @@ void initialize()
   Serial3.println("initialization done.");
   char nearestMap[13] = "";
 
-  //  SelectMap(Start,"MAPDEFS.TXT",nearestMap); //pollutes info from map_def to nearestMap
+    SelectMap(Start,"MAPDEFS.TXT",nearestMap); //populates info from map_def to nearestMap
 
   LoadMap("UWB_MAP.TXT");// use nearestMap:: pollutes the Node, juction with the nearestMap
 
@@ -887,10 +886,13 @@ void setup()
   initialize();
   Serial1.begin(baudrate);
   Serial2.begin(baudrate);
-  ps.dt = &data;
+  /**
+   * Pooja - ParseState is also asscociated with the ELcanoSerial.h. So it is commented out 
+   */
+  /*ps.dt = &data;
   ps.input = &Serial2;
   ps.output = &Serial2;
-  ps.capture  =  MsgType::sensor;
+  ps.capture  =  MsgType::sensor;*/
 
 }
 /*---------------------------------------------------------------------------------------*/
