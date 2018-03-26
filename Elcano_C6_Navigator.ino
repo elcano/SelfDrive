@@ -1,5 +1,9 @@
 //#include <GPS.h>
-
+/** 
+ *  Pooja - The baudrate constant was moved to C6 Navigator since it was originally 
+ *  part of ElcanoSerial.h
+ */
+const int32_t baudrate = 74800;
 /*
 Elcano Module C6: Navigator.
   Includes C5 Obstacle detection.
@@ -82,7 +86,7 @@ Serial lines:
 #include <SD.h>
 #include <IO.h>
 #include <Matrix.h>
-#include <ElcanoSerial.h>
+//#include <ElcanoSerial.h>
 using namespace elcano;
 
 #include <Wire.h>
@@ -134,7 +138,7 @@ namespace C6_Navigator
 namespace C6_Navigator {
 #endif
 // limited to 8+3 characters
-#define FILE_NAME "GPSLog.csv"
+//#define FILE_NAME "GPSLog.csv"
 
 File dataFile;
 char GPSfile[BUFFSIZ] = "mmddhhmm.csv";
@@ -146,9 +150,14 @@ const char* Header = "Latitude,Longitude,East_m,North_m,SigmaE_m,SigmaN_m,Time_s
 const char* ObstHeader ="Left,Front,Right,Busy";
 
 // Added by Varsha
-SerialData C2_Results;
-SerialData data;
-ParseState ps;
+/**
+ * Edited by Pooja:
+ * SerialData and ParseState has been used by ElcanoSerial. 
+ * So, it is commented out. 
+ */
+//SerialData C2_Results;
+//SerialData data;
+//ParseState ps;
 
 
 
@@ -169,12 +178,15 @@ const unsigned long LoopPeriod = 100;  // msec
 PositionData oldPos, newPos;
 
 
-/* This procedure accepts SerialData structure and prints all the members of the struct to a serial
-   output device. This will be only used for debugging purposes
-   
-   Added by Varsha
-*/
-void displayResults(SerialData &Results)
+/** 
+ * This procedure accepts SerialData structure and prints all the members of the struct to a serial
+ * output device. This will be only used for debugging purposes
+ * 
+ * Added by Varsha
+ * Modified by Pooja - The method displayResults originally had every single line of 
+ * code within the method commented. So the entire method was also commented by Pooja  
+**/
+/*void displayResults(SerialData &Results)
 {
 //    Serial.print("SerialData::Kind :" );
 //    Serial.println(Results.kind);
@@ -194,10 +206,10 @@ void displayResults(SerialData &Results)
 //    Serial.println(Results.probability);
 //    Serial.print("SerialData::distance_travelled_cm:");
 //    Serial.println(Results.distance_travelled_cm);
-}
-
+}*/
 //---------------------------------------------------------------------------
-char* obstacleDetect()
+/* To be deleted - Pooja 
+  char* obstacleDetect()
 {
 // Calibration shows that readings are 5 cm low.
 #define OFFSET 5
@@ -210,7 +222,7 @@ char* obstacleDetect()
   LeftRange/100, LeftRange%100, Range/100, Range%100, RightRange/100, RightRange%100);
 
   return ObstacleString;
-}
+}*/
 /*---------------------------------------------------------------------------------------*/
 /* Feb 23, 2016  TCF.  This instance of WheelRev is depricated.
    Current code for WheelRev is in Elcano_C2_LowLevel.
@@ -249,7 +261,7 @@ long GetHeading(void)
 /*
  * Test Code to be removed
  */
-
+/* To be deleted  Pooja 
 void TestSpeed ( SerialData &data )
 {
   long randNumber = random(3000, 5000);
@@ -258,7 +270,7 @@ void TestSpeed ( SerialData &data )
   data.clear();
 //  data.kind = MSG_SENSOR;
   data.speed_cmPs = randNumber;
-}
+}*/ 
 /*
  * End of Test Code
 */
@@ -278,16 +290,16 @@ void initialize()
   Serial.flush();
   Serial3.flush();
   delay(5000);
-  // prints title with ending line break
- // Serial.println(" GPS parser");
-//  Serial.print("Acquiring GPS RMC...");
-//                                                        common::checksum(protocol);
-//                                                        Serial3.println(protocol);
-//                                                        disable[10] = '2';
-//                                                        common::checksum(disable);
-//                                                        Serial3.println(disable);   // no GSA
+// prints title with ending line break
+// Serial.println(" GPS parser");
+// Serial.print("Acquiring GPS RMC...");
+  common::checksum(protocol);
+  Serial3.println(protocol);
+  disable[10] = '2';
+  common::checksum(disable);
+  Serial3.println(disable);   // no GSA
 
-                                                          //GPS_available = estimated_position.AcquireGPRMC(200);
+//GPS_available = estimated_position.AcquireGPRMC(200);
   
  /* Serial.println(TimeHeader);
   Serial.println(StartTime);
@@ -389,45 +401,47 @@ void setup()
 
     /* Initializing old PositionData struct to default values
      *  Added by Varsha
+     *  Modified by Pooja - SerialData and ParseState are removed as elcanoSerial.h 
+     *  is no longer to be used
      */
-    data.clear();
+    /*data.clear();
     ps.dt = &data;
     ps.input = &Serial2;
     ps.output = &Serial2;
 
-    ps.capture = MsgType::drive;
+    ps.capture = MsgType::drive;*/
     pinMode(16,OUTPUT);
    
     oldPos.Clear();
     oldPos.time_ms = millis();
 
     //Enable auto-gain
-                                            // mag.enableAutoRange(true);
+    // mag.enableAutoRange(true);
 
 
   
     //Initialise the sensor
     delay(100);
-    //Ignore the GPS for now!!
-//                              if(!mag.begin())
-//                              {
-//                                  //There was a problem detecting the LSM303 ... check your connections
-//                                  Serial.println("Ooops, no LSM303 detected ... Check your wiring!");
-//                                  while(1);
-//                              }
-                                                                 //mag.begin();
-   // initialize();
-    
-                                      Serial.print("Initializing GPS SD card...");
 
-    // see if the card is present and can be initialized:
-//    if (!SD.begin(chipSelect))
-//    {
+//  if(!mag.begin())
+//  {
+//    There was a problem detecting the LSM303 ... check your connections
+//    Serial.println("Ooops, no LSM303 detected ... Check your wiring!");
+//    while(1);
+//  }
+//  mag.begin();
+    initialize();
+    
+    Serial.print("Initializing GPS SD card...");
+
+//   see if the card is present and can be initialized:
+//   if (!SD.begin(chipSelect))
+//  {
 //    Serial.println("Card failed, or not present");
 //    digitalWrite(GPS_RED_LED, HIGH);
-//    }
-//    else
-//    {
+//  }
+//  else
+//  {
 //    Serial.println("card initialized.\n");
 //    dataFile = SD.open(GPSfile, FILE_WRITE);
 //    // if the file is available, write date and time to it:
@@ -441,13 +455,13 @@ void setup()
 //        dataFile.println(ObstHeader);
 //        dataFile.close();
 //    }
-//   }
-//                                    dataFile.println(35);
-//                                    dataFile.println(56);
-//                                    dataFile.println(35);
-//                                    dataFile.println(56);
-//                                    dataFile.println(35);
-//                                    dataFile.println(56);
+//  }
+//  dataFile.println(35);
+//  dataFile.println(56);
+//  dataFile.println(35);
+//  dataFile.println(56);
+//  dataFile.println(35);
+//  dataFile.println(56);
     
     // Commented by Varsha as low-level routine will be used from C2
     //pinMode(CYCLOMETER, INPUT);
@@ -500,7 +514,7 @@ void loop()
    //IMU.Read(GPS_reading);
 
     // Added by Varsha - to get heading
-    CurrentHeading =  100;// GetHeading();
+    CurrentHeading = GetHeading();
     //Serial.print("CurrentHeading:");
    // Serial.println(CurrentHeading);
     // End of changes
@@ -553,14 +567,18 @@ void loop()
 //   data.posE_cm = GPS_reading.latitude;
 //   data.posN_cm = GPS_reading.longitude;
 //   data.write(&Serial2);
-   //data.clear();
+//   data.clear();
    
 //   Serial.print(String(estimated_position.north_mm) + "estimated_position.north_mm\t");
 //   Serial.println(String(estimated_position.east_mm) + "estimated_position.east_mm");
    
 
-//     //Sending GPS position from C6 to C2
-  data.clear();
+//   Sending GPS position from C6 to C2
+/**
+ *   Pooja - Serial communication associated with SerialData has been commented 
+ *   as ElcanoSerial.h is no longer to be used
+ */
+  /*data.clear();
   data.kind = MsgType::sensor;
   data.bearing_deg = 230; //CurentHeading
   data.speed_cmPs = 240;
@@ -568,7 +586,7 @@ void loop()
   data.posE_cm = 23;//GPS_reading.latitude/10;
   data.posN_cm = 34;//GPS_reading.longitude/10;
 //    // Read data from C2 using Elcano_Serial
- data.write(&Serial2);
+ data.write(&Serial2);*/
  
  delay(100);
  // clear();
@@ -667,7 +685,7 @@ void Show(REAL x)
 /* Entry point for the simulator.
    This could be done with namespace, but the Arduino IDE does not handle preprocessor statements
    wrapping a namespace in the standard way.
-*/
+
 void C6_Navigator_setup() { C6_Navigator::setup(); }
 
-void C6_Navigator_loop() { C6_Navigator::loop(); }
+void C6_Navigator_loop() { C6_Navigator::loop(); }*/
