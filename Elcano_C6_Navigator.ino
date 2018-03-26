@@ -1,12 +1,6 @@
 //#include <GPS.h>
-/** 
- *  Pooja - The baudrate constant was moved to C6 Navigator since it was originally 
- *  part of ElcanoSerial.h
- */
-const int32_t baudrate = 74800;
-/*
-Elcano Module C6: Navigator.
-  Includes C5 Obstacle detection.
+/*Elcano Module C6: Navigator.
+Includes C5 Obstacle detection.
 
 Documentation:
   NavigationSystem (TO DO: Write document, based on these comments).
@@ -86,19 +80,18 @@ Serial lines:
 #include <SD.h>
 #include <IO.h>
 #include <Matrix.h>
-//#include <ElcanoSerial.h>
+#include <ElcanoSerial.h>
 using namespace elcano;
 
 #include <Wire.h>
-//#include <Adafruit_LSM303.h>
 #include <Adafruit_LSM303_U.h>
-//#include <Elcano_Serial.h>
 #include <FusionData.h>
 
 /* Assign a unique ID to this sensor at the same time */
 Adafruit_LSM303_Mag mag = Adafruit_LSM303_Mag(1366123);
 
 long CurrentHeading = -1;
+SerialData C2_Results;
 
 // On the Ethernet Shield, CS is pin 4. Note that even if it's not
 // used as the CS pin, the hardware CS pin (10 on most Arduino boards,
@@ -149,15 +142,8 @@ const char* RawKF = "Raw GPS data,,,,,,Kalman Filtered data";
 const char* Header = "Latitude,Longitude,East_m,North_m,SigmaE_m,SigmaN_m,Time_s,";
 const char* ObstHeader ="Left,Front,Right,Busy";
 
-// Added by Varsha
-/**
- * Edited by Pooja:
- * SerialData and ParseState has been used by ElcanoSerial. 
- * So, it is commented out. 
- */
-//SerialData C2_Results;
-//SerialData data;
-//ParseState ps;
+SerialData data;
+ParseState ps;
 
 
 
@@ -208,22 +194,6 @@ PositionData oldPos, newPos;
 //    Serial.println(Results.distance_travelled_cm);
 }*/
 //---------------------------------------------------------------------------
-/* To be deleted - Pooja 
-  char* obstacleDetect()
-{
-// Calibration shows that readings are 5 cm low.
-#define OFFSET 5
-    int LeftRange =  analogRead(LEFT) + OFFSET;
-    int Range =      analogRead(FRONT) + OFFSET;
-    int RightRange = analogRead(RIGHT) + OFFSET;
-
-  sprintf(ObstacleString,
-  "%d.%0.2d,%d.%0.2d,%d.%0.2d,",
-  LeftRange/100, LeftRange%100, Range/100, Range%100, RightRange/100, RightRange%100);
-
-  return ObstacleString;
-}*/
-/*---------------------------------------------------------------------------------------*/
 /* Feb 23, 2016  TCF.  This instance of WheelRev is depricated.
    Current code for WheelRev is in Elcano_C2_LowLevel.
    The odometer processing is part of low level control.
@@ -257,24 +227,6 @@ long GetHeading(void)
     return ((long)(heading * HEADING_PRECISION));
 //    return heading;
 }
-
-/*
- * Test Code to be removed
- */
-/* To be deleted  Pooja 
-void TestSpeed ( SerialData &data )
-{
-  long randNumber = random(3000, 5000);
-  
-  Serial.println(randNumber);
-  data.clear();
-//  data.kind = MSG_SENSOR;
-  data.speed_cmPs = randNumber;
-}*/ 
-/*
- * End of Test Code
-*/
-
 
 /*---------------------------------------------------------------------------------------*/
 void initialize()
@@ -503,38 +455,13 @@ void loop()
     char* pGPS;
     char* pObstacles;
     bool GPS_available = GPS_reading.AcquireGPGGA(300);
-    
-    /* Perform dead reckoning from clock and previous state
-    Read compass.
-    ReadINU.
-    Set attitude.
-    Read Hall Odometer;  */
-
-
-   //IMU.Read(GPS_reading);
+    //IMU.Read(GPS_reading);
 
     // Added by Varsha - to get heading
     CurrentHeading = GetHeading();
-    //Serial.print("CurrentHeading:");
-   // Serial.println(CurrentHeading);
-    // End of changes
-    
-/*  Read Optical Odometer;
-    Read lane deviation;   
-    If (message from C4)    
-    { */     
-//      readline(2);  // C4 Path planner on serial 2 get new route and speed
- /* }
-    If (message from C3)
-    { */
-//      readline(2);  // get C3 Pilot commanded wheel spin and steering
-/*    }
-    if (landmarks availabe)
-    {  // get the position based on bearing and angle to a known location.
-      ReadLandmarks(C4);
-    }
-    // Fuse all position estimates with a Kalman Filter */
- /*   deltaT_ms = GPS_reading.time_ms - estimated_position.time_ms;
+ 
+    // Fuse all position estimates with a Fuzzy Filter 
+    deltaT_ms = GPS_reading.time_ms - estimated_position.time_ms;
     estimated_position.fuse(GPS_reading, deltaT_ms);
     estimated_position.time_ms = GPS_reading.time_ms;
     
@@ -542,71 +469,39 @@ void loop()
     // Send vehicle state to C6 and C4.
 
     // Preparing Result struct to send data to C4
-/*    data.clear();
-    data.bearing_deg = CurrentHeading;
-    data.posE_cm = estimated_position.east_mm;
-    data.posN_cm = estimated_position.north_mm;
-//    data.kind = MSG_GOAL;
-
+   
     //Sending GPS position from C6 to C2
     C2_Results.clear();    
     C2_Results.posE_cm = estimated_position.east_mm/10;
     C2_Results.posN_cm = estimated_position.north_mm/10;
-//    C2_Results.kind = MSG_SENSOR;
+    C2_Results.kind = MsgType::sensor;
     
     // Read data from C2 using Elcano_Serial
     C2_Results.clear();
-//    readSerial(&Serial2, &C2_Results);
-    TestSpeed(C2_Results);
-    displayResults(C2_Results);
-      // Preparing Result struct to send data to C4
-      */
-//
-//   data.kind = MsgType::goal;
-//   data.bearing_deg = CurrentHeading;
-//   data.posE_cm = GPS_reading.latitude;
-//   data.posN_cm = GPS_reading.longitude;
-//   data.write(&Serial2);
-//   data.clear();
-   
-//   Serial.print(String(estimated_position.north_mm) + "estimated_position.north_mm\t");
-//   Serial.println(String(estimated_position.east_mm) + "estimated_position.east_mm");
-   
+    //readSerial(&Serial2, &C2_Results);
+    //TestSpeed(C2_Results);
+    //displayResults(C2_Results);
+  
 
-//   Sending GPS position from C6 to C2
-/**
- *   Pooja - Serial communication associated with SerialData has been commented 
- *   as ElcanoSerial.h is no longer to be used
- */
-  /*data.clear();
-  data.kind = MsgType::sensor;
-  data.bearing_deg = 230; //CurentHeading
-  data.speed_cmPs = 240;
-  data.angle_mDeg = 56;
-  data.posE_cm = 23;//GPS_reading.latitude/10;
-  data.posN_cm = 34;//GPS_reading.longitude/10;
-//    // Read data from C2 using Elcano_Serial
- data.write(&Serial2);*/
- 
  delay(100);
  // clear();
 
- //data.clear();
-// Serial2.end();
-// Serial2.begin(baudrate);
-// ps.dt = &data;
-// ps.input = &Serial2;
-// ps.output = &Serial2;
+   data.clear();
+   Serial2.end();
+   Serial2.begin(baudrate);
+   ps.dt = &data;
+   ps.input = &Serial2;
+   ps.output = &Serial2;
 
-// data.clear();
+   data.clear();
   
-//  ParseStateError r = ps.update();
-//  Serial.println("done");
-//  Serial.println(static_cast<int8_t>(r));
-//  Serial.println(data.speed_cmPs);
-//  Serial.println(data.speed_cmPs);
-  //data.write(&Serial1);
- /*  if(r == ParseStateError::success) 
+  ParseStateError r = ps.update();
+  Serial.println("done");
+  Serial.println(static_cast<int8_t>(r));
+  Serial.println(data.speed_cmPs);
+  Serial.println(data.speed_cmPs);
+  data.write(&Serial1);
+   if(r == ParseStateError::success) 
     {
       
       Serial2.end();
@@ -658,7 +553,7 @@ void loop()
   //    Serial.print(time, DEC); Serial.print(", ");
   //    Serial.print(GPS_reading.time_ms, DEC); Serial.print(", ");
   //    Serial.println(deltaT_ms, DEC);
- */ 
+  
       // Send vehicle state to C3 and C4.
   
       // open the file. note that only one file can be open at a time,
