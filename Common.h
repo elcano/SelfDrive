@@ -59,38 +59,58 @@ class waypoint // best estimate of position and state
     long sigma_mm; // standard deviation of position.
     unsigned long time_ms;   // time of reading since start_time, start_date  
     // millis() + offset_ms = waypoint.time_ms
-/*
+  /*
   We represent points as locations in mm. A 32 bit signed long is good for +/- 2000 km.
   Latitudes and longitudes are given as a double with up to 9 digits,
   such as 47.622876, -122.352307
   On the Arduino, a float is the same as a double, giving 6 to 7 decimal digits.
   This means that mm resolution only applies within 1 km of the origin.
-*/
-int Evector_x1000;   // 1000 * unit vector pointing east
-int Nvector_x1000;   // 1000 * unit vector pointing north
+  */
+  int Evector_x1000;   // 1000 * unit vector pointing east
+  int Nvector_x1000;   // 1000 * unit vector pointing north
 //    int bearing;  // degrees. 0 = North; 90 = East.
-long speed_mmPs; // vehicle speed in mm per second.
-int index;       // used for passing a sequence of waypoints over serial line.
+    long speed_mmPs; // vehicle speed in mm per second.
+    int index;       // used for passing a sequence of waypoints over serial line.
    
-void Compute_mm();
-void Compute_LatLon();
-char* formPointString();
-bool readPointString(unsigned long max_wait_ms, int channel);
-void   operator=(waypoint& other);
-void   operator=(waypoint* other);
-long  distance_mm(waypoint *other);
-void  vectors(waypoint *other);
-long  distance_mm(long east_mm, long north_mm);
+    void Compute_mm();
+    void Compute_LatLon();
+//    bool AcquireGPRMC(unsigned long max_wait_ms);
+//    bool AcquireGPGGA(unsigned long max_wait_ms);
+//    void fuse(waypoint reading, int deltaT_ms);
+//    void SetTime(char *pTime, char * pDate);
+//    char* GetLatLon(char* parseptr);
+    char* formPointString();
+    bool readPointString(unsigned long max_wait_ms, int channel);
+    void   operator=(waypoint& other);
+    void   operator=(waypoint* other);
+    long  distance_mm(waypoint *other);
+    void  vectors(waypoint *other);
+    long  distance_mm(long east_mm, long north_mm);
 	
-#ifdef MEGA
+																//#ifdef MEGA
 // The following waypoint methods exist only on the C6 Navigator module.    
-void fuse(waypoint GPS_reading, int deltaT_ms);
-char* GetLatLon(char* parseptr);
-bool AcquireGPRMC(unsigned long max_wait_ms);
-bool AcquireGPGGA(unsigned long max_wait_ms);
-void SetTime(char *pTime, char * pDate);
-#endif
+    void fuse(waypoint GPS_reading, int deltaT_ms);
+    char* GetLatLon(char* parseptr);
+    bool AcquireGPRMC(unsigned long max_wait_ms);
+    bool AcquireGPGGA(unsigned long max_wait_ms);
+    void SetTime(char *pTime, char * pDate);
+																	//#endif
 };
+    
+    //Converts provided Longitude and Latitude to MM
+    boolean convertLatLonToMM(long latitude, long longitude) {
+        long scaledOriginLat = LATITUDE_ORIGIN * 1000000;
+        long scaledOriginLon = LONGITUDE_ORIGIN * 1000000;
+        
+        double dLat = (latitude) * (PI / 180.0) - (scaledOriginLat) * (PI / 180.0);
+        double dLon = latitude * (PI / 180.0) - scaledOriginLon * (PI / 180.0);
+        
+        Serial.println("dLat = " + String(dLat) + " dLon = " + String(dLon));
+        double soln = sin(dLat / 2) * cos(dLat / 2) + cos(scaledOriginLat * PI / 180) * cos(latitude * PI / 180) * sin(dLon / 2) * sin(dLon / 2);
+        double ans = 2 * atan2(sqrt(soln), sqrt(1 - soln));
+        double finalAns = EARTH_RADIUS_MM * ans;
+        return true;
+    }
 
 struct curve
 {
@@ -112,8 +132,8 @@ struct junction
   // If there are more than 4 destinations, one of the destinations has same location and
   // zero Distance.
   long Distance[4];  // mm
-  // int Speed[4];     // mm / s
-  // curve *route[4];  // intermediate waypoints between location and Destination.
+//  int Speed[4];     // mm / s
+//  curve *route[4];  // intermediate waypoints between location and Destination.
   // location != route[n]->present
   // The vehicle does not pass though location if it is turning.  
   // The vehicle travels from (the last waypoint of the curve leading into the junction)
