@@ -91,13 +91,14 @@ using namespace elcano;
 Adafruit_LSM303_Mag mag = Adafruit_LSM303_Mag(1366123);
 
 long CurrentHeading = -1;
-SerialData C2_Results;
+SerialData C6_Results;
 
 // On the Ethernet Shield, CS is pin 4. Note that even if it's not
 // used as the CS pin, the hardware CS pin (10 on most Arduino boards,
 // 53 on the Mega) must be left as an output or the SD library
 // functions will not work.
 
+//get rid later rathtana
 #ifdef SIMULATOR
 #include <Elcano_simulator.h>
 #endif
@@ -464,26 +465,7 @@ void loop()
     deltaT_ms = GPS_reading.time_ms - estimated_position.time_ms;
     estimated_position.fuse(GPS_reading, deltaT_ms);
     estimated_position.time_ms = GPS_reading.time_ms;
-    
-    // Added by Varsha
-    // Send vehicle state to C6 and C4.
 
-    // Preparing Result struct to send data to C4
-   
-    //Sending GPS position from C6 to C2
-    C2_Results.clear();    
-    C2_Results.posE_cm = estimated_position.east_mm/10;
-    C2_Results.posN_cm = estimated_position.north_mm/10;
-    C2_Results.kind = MsgType::sensor;
-    
-    // Read data from C2 using Elcano_Serial
-    C2_Results.clear();
-    //readSerial(&Serial2, &C2_Results);
-    //TestSpeed(C2_Results);
-    //displayResults(C2_Results);
-  
-
- delay(100);
  // clear();
 
    data.clear();
@@ -494,7 +476,7 @@ void loop()
    ps.output = &Serial2;
 
    data.clear();
-  
+   // Read data from C2 using Elcano_Serial
   ParseStateError r = ps.update();
   Serial.println("done");
   Serial.println(static_cast<int8_t>(r));
@@ -516,8 +498,8 @@ void loop()
       // Populate PositionData struct
       PositionData gps, fuzzy_out;
     
-      gps.x_Pos = estimated_position.latitude;
-      gps.y_Pos = estimated_position.longitude;
+      gps.x_Pos = estimated_position.east_mm;
+      gps.y_Pos = estimated_position.north_mm;
   
   
       
@@ -528,14 +510,14 @@ void loop()
       RotateCoordinates(fuzzy_out, newPos.bearing_deg, ROTATE_COUNTER_CLOCKWISE);
       TranslateCoordinates(oldPos, fuzzy_out, 1);
   
-      // Swap data
+      // Update old position to new position 
       CopyData(oldPos, newPos);
       
       // Copy GPS fuzzy output to C4
       data.kind = MsgType::sensor;
       // speed already set
-      data.posE_cm = fuzzy_out.x_Pos;
-      data.posN_cm = fuzzy_out.y_Pos;
+      data.posE_cm = fuzzy_out.x_Pos /10;
+      data.posN_cm = fuzzy_out.y_Pos /10;
       data.bearing_deg = CurrentHeading / HEADING_PRECISION;
       data.angle_mDeg = 0;
   
@@ -543,39 +525,37 @@ void loop()
       data.write(&Serial2);
       //data.write(&Serial3);
       
+    
+    C6_Results.clear();    
+    C6_Results.posE_cm = estimated_position.east_mm/10;
+    C6_Results.posN_cm = estimated_position.north_mm/10;
+    C6_Results.kind = MsgType::sensor;
+    C6_Results.speed_cmPs = newPos.speed_cmPs;
+    C6_Results.bearing_deg = newPos.bearing_deg;
+
+    //C6_Results (SerialData in Elcano Serial libaray) doesn't have a varaible that represents time_ms 
+    //We would have to manually add that variable to the struct if we 
+    //want to store it in C6_Results 
+    newPos.time_ms = time;	
+    
   
     }
-    else Serial.println(static_cast<int8_t>(r));
-      //data.write(&Serial2);
-      //C2_Results.write(&Serial2);   
-     
-  //    Serial.print("time, gps, dt_ms = ");
-  //    Serial.print(time, DEC); Serial.print(", ");
-  //    Serial.print(GPS_reading.time_ms, DEC); Serial.print(", ");
-  //    Serial.println(deltaT_ms, DEC);
-  
-      // Send vehicle state to C3 and C4.
-  
-      // open the file. note that only one file can be open at a time,
-      // so you have to close this one before opening another.
-  
-
 }
+   
 
 
-#ifdef SIMULATOR
-} // end namespace
-#else
-void Show(char* x)
-{
-  Serial.print(x);
-}
-void Show(REAL x)
-{
-  Serial.print(x);
-  Serial.print(", ");
-}
-#endif
+//#ifdef SIMULATOR
+//} // end namespace
+//#else
+//void Show(char* x)
+//{
+//  Serial.print(x);
+//}
+//void Show(REAL x){
+//  Serial.print(x);
+//  Serial.print(", ");
+//}
+//#endif
 
 /* Entry point for the simulator.
    This could be done with namespace, but the Arduino IDE does not handle preprocessor statements
