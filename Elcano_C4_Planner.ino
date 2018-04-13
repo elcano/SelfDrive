@@ -1,27 +1,17 @@
-#include <Conversion.h>
+//#include <Conversion.h>
 #include <Common.h>
 #include <IO.h>
 
 #include <SPI.h>
 #include <SD.h>
-//#include <ElcanoSerial.h>
+#include <ElcanoSerial.h>
 
 
 byte rx_byte = 0;
-/** 
- *  Pooja - baudrate constant has been moved to C4 planner.ino as it was defined 
- *  in ElcanoSerial.h 
- */
-const int32_t baudrate = 74800;
+int last_index_of_path;//last is the the last index of the Path. Path[last] is the destination 
+
 
 using namespace elcano; 
-// Commenting serialData out to remove the serial line 
-/**
- * Pooja - Both Serial Data and ParseState are associated with the ElcanoSerial.h. 
- * So, has been commented out 
- */
-//SerialData data;
-//ParseState ps;
 
 #define PI ((float) 3.1415925)
 #ifndef NULL
@@ -108,13 +98,10 @@ void ConstructNetwork(junction *Map, int MapPoints)
 void GetGoals(junction *nodes , int Goals)
 {
   double deltaX, deltaY, Distance;
-  for (int i = 0; i < CONES; i++)
-  {
-    //    mission[i].latitude  = Nodes[i].east_mm;//goal_lat[i];
-    //    mission[i].longitude = Nodes[i].north_mm;//goal_lon[i];
-    mission[i].east_mm  = goal_lat[i];
-    mission[i].north_mm = goal_lon[i];
-    //    mission[i].Compute_mm();
+  for (int i = 0; i < CONES; i++) {
+    mission[i].latitude = goal_lat[i];
+    mission[i].longitude = goal_lon[i];
+    mission[i].Compute_mm();
     mission[i].speed_mmPs = DESIRED_SPEED_mmPs;
     mission[i].index = 1 | GOAL;
     mission[i].sigma_mm = 1000;
@@ -133,12 +120,12 @@ void GetGoals(junction *nodes , int Goals)
       mission[i - 1].Evector_x1000 = (deltaX * 1000.) / Distance;
       mission[i - 1].Nvector_x1000 = (deltaY * 1000.) / Distance;
     }
-    //    if (i == CONES - 1)
-    //    {
-    //      mission[i].Evector_x1000 = mission[i-1].Evector_x1000;
-    //      mission[i].Nvector_x1000 = mission[i-1].Nvector_x1000;
-    //      mission[i].index |= END;
-    //    }
+        if (i == CONES - 1)
+        {
+          mission[i].Evector_x1000 = mission[i-1].Evector_x1000;
+          mission[i].Nvector_x1000 = mission[i-1].Nvector_x1000;
+          mission[i].index |= END;
+        }
   }
 }
 /*---------------------------------------------------------------------------------------*/
@@ -213,7 +200,7 @@ long distance(int cur_node, int *k,  long cur_east_mm, long cur_north_mm, int* p
   return closest_mm;
 }
 /*---------------------------------------------------------------------------------------*/
-
+//Figuring out a path to get the road network 
 void FindClosestRoad(waypoint *start, waypoint *road)  //populate road with best road from start
 {
       long closest_mm = MAX_DISTANCE;
@@ -353,6 +340,7 @@ void test_buildPath() {
 
   //  BuildPath(0, Path, destination);
 }
+//Usa A star
 int FindPath(waypoint *start, waypoint *destination)//While OpenSet is not empty
 {
 
@@ -410,8 +398,8 @@ int FindPath(waypoint *start, waypoint *destination)//While OpenSet is not empty
     if (BestID == destination->index || BestID == destination->sigma_mm)// Done:: reached the goal!!
     {
 
-             return BuildPath(BestID, start, destination);   // Construct path backward to start.
-      return 5;
+            return BuildPath(BestID, start, destination);   // Construct path backward to start.
+
     }
 
     i = BestID;  // get successor nodes from map
@@ -456,6 +444,7 @@ int FindPath(waypoint *start, waypoint *destination)//While OpenSet is not empty
 // Low level path is a straight line from start to detination.
 // PathPlan makes an intermediate level path that uses as many roads as possible.
 //start = currentlocation: destination = heading to;
+//Find the cloeset road and call Findpath to do the A star 
 int PlanPath (waypoint *start, waypoint *destination)
 {
 
@@ -466,28 +455,29 @@ int PlanPath (waypoint *start, waypoint *destination)
   Path[0] = start;
   Path[0].index = 0;
 
-  // FindClosestRoad( start, &roadOrigin );
-  // FindClosestRoad( destination, &roadDestination );
+   FindClosestRoad( start, &roadOrigin );
+   FindClosestRoad( destination, &roadDestination );
 
-  //     int w = abs(start->east_mm  - roadOrigin.east_mm) + abs(start->north_mm - roadOrigin.north_mm);
-  //     int x = abs(destination->east_mm  - roadDestination.east_mm)  + abs(destination->north_mm - roadDestination.north_mm);
-  //
-  //     int straight_dist = 190 * abs(start->east_mm  - destination->east_mm)+  abs(start->north_mm - destination->north_mm);
-  ////    if (w + x >= straight_dist) // don't use roads; go direct
-  //     {
-  //        last = 1;
-  ////        Serial.println("In Straight");
-  //     }
-  //
-  //      else   // use A* with the road network
-  //      {
-  //        Serial.println("In Else");
+       int w = abs(start->east_mm  - roadOrigin.east_mm) + abs(start->north_mm - roadOrigin.north_mm);
+       int x = abs(destination->east_mm  - roadDestination.east_mm)  + abs(destination->north_mm - roadDestination.north_mm);
+  
+       int straight_dist = 190 * abs(start->east_mm  - destination->east_mm)+  abs(start->north_mm - destination->north_mm);
+    if (w + x >= straight_dist) // don't use roads; go direct
+       {
+          last = 1;
+        Serial.println("In Straight");
+       }
+  
+        else   // use A* with the road network
+        {
+          Serial.println("In Else");
   Path[1] = roadOrigin;
   Path[1].index = 1;
+  //why index = 7?
   destination -> index = 7;
-  //        last = FindPath(roadOrigin, roadDestination);
-  last = FindPath(start, destination);
-  //      }
+        last = FindPath(&roadOrigin, &roadDestination);
+ 
+     }
 
   Path[last] = destination;
   Path[last - 1].vectors(&Path[last]);
@@ -501,31 +491,6 @@ int PlanPath (waypoint *start, waypoint *destination)
   return last;
 
 }
-/*---------------------------------------------------------------------------------------*/
-
-// Transmit the path to C3 Pilot over a serial line.
-// Pooja - This method was commented out to remove the serial connection
-/*void SendPath(waypoint *course, int count)
-{
-
-  SerialData results;
-  for ( int i = 0; i < count; i++)
-  {
-    results.clear();
-    results.number = i;
-    results.kind = MsgType::seg;
-    results.posE_cm = course->east_mm / 10;//data.posE_cm + 4;
-    results.posN_cm = course->north_mm / 10;//data.posN_cm + 5;
-    float angle = atan2(course->Nvector_x1000, course->Evector_x1000) * 180 / PI + 90.;//data.posE_cm;
-    results.bearing_deg = (long) (-angle); //data.bearing_deg + 8; // (long) (-angle);
-    results.speed_cmPs = course->speed_mmPs / 10;//data.speed_cmPs + 9;
-    results.write(&Serial2);
-    delay(100);
-
-  }
-
-}*/
-
 /*---------------------------------------------------------------------------------------*/
 // LoadMap
 // Loads the map nodes from a file.
@@ -851,9 +816,9 @@ void initialize()
   Serial3.println("initialization done.");
   char nearestMap[13] = "";
 
-    SelectMap(Start,"MAPDEFS.TXT",nearestMap); //populates info from map_def to nearestMap
+  SelectMap(Start,"MAPDEFS.TXT",nearestMap); //populates info from map_def to nearestMap
 
-  LoadMap("UWB_MAP.TXT");// use nearestMap:: pollutes the Node, juction with the nearestMap
+  LoadMap(nearestMap);// use nearestMap:: populates the Node, juction with the nearestMap
 
 
 
@@ -861,39 +826,19 @@ void initialize()
   /* Convert latitude and longitude positions to flat earth coordinates.
      Fill in waypoint structure  */
   GetGoals(Nodes, CONES);
-  // SendPath(mission, CONES); //send mission to C3
-
-  //  SendPath(mission, CONES); //send mission to C3
-
-  //  last = PlanPath (&mission[0], &mission[3]);
-  //  Path[last].index |= GOAL; //number of waypoint sequences
-  //SendPath(Path, MAX_WAYPOINTS); //Send a complete Path to C3
-
-  //   SendPath(Path, MAX_WAYPOINTS); //Send a complete Path to C3
-
-  Serial.println();
-
 }
 /*---------------------------------------------------------------------------------------*/
 void setup()
 {
-  Serial3.begin(9600);
-  Serial3.flush();
-  //  pinMode(DATA_READY, INPUT);
   DataAvailable = true; //false
-  //attachInterrupt(0, DataReady, FALLING);
 
   initialize();
-  Serial1.begin(baudrate);
-  Serial2.begin(baudrate);
-  /**
-   * Pooja - ParseState is also asscociated with the ELcanoSerial.h. So it is commented out 
-   */
-  /*ps.dt = &data;
-  ps.input = &Serial2;
-  ps.output = &Serial2;
-  ps.capture  =  MsgType::sensor;*/
 
+  Start.east_mm = Nodes[0].east_mm;//Path[last].east_mm;
+  Start.north_mm = Nodes[0].north_mm;
+
+  //make this a global variable
+  last_index_of_path = PlanPath (&Start, &mission[0]);
 }
 /*---------------------------------------------------------------------------------------*/
 //Test mission::a list of waypoints to cover
@@ -904,46 +849,20 @@ void test_mission() {
     Serial.println("mission " + String(i) + " = " + String(mission[i].latitude) + "\t north_mm " + String(mission[i].north_mm));
   }
 }
-void loop()
-{
-   if (Serial.available()) {
-    // get byte from USB serial port
-    rx_byte = Serial.read();
-    // send byte to serial port 3
-    Serial3.write(rx_byte);
-  }
-  // check for data byte on serial port 3
-  if (Serial3.available()) {
-    // get a byte from serial port 3
-    rx_byte = Serial3.read();
-    // send the byte to the USB serial port
-    Serial.write(rx_byte);
-  }
-
-  static int Goal = 2;
-  int last;//what is last?
+void loop() {
+  
   /*
     Maintain a list of waypoints from current position to destination.
     Eliminate any waypoints that have already been visited.
     About once a second, write the current position and remaining mission, so that if we
     get a reset, we can start from where we left off.
   */
-  //     if (DataAvailable)
-  //        {
-  //            ParseStateError r = ps.update();// read vehicle estimated position from C6
-  //            if(r == ParseStateError::success)
-  //            {
-  //              digitalWrite(C4_DATA_SENT, HIGH);  // transition interrupts the processor
-  digitalWrite(C4_DATA_SENT, LOW);
 
-  //Start.readPointString(1000, 0);
-  //              last = 0;
   Start.east_mm = Nodes[0].east_mm;//Path[last].east_mm;
   Start.north_mm = Nodes[0].north_mm;
-
-  last = PlanPath (&Start, &mission[0]);
-  //              Serial.println(last);
-  //              Path[last].index |= GOAL;
+ 
+  //doing the A star
+  //last = PlanPath (&Start, &mission[0]);
 
   //              if(Start.east_mm == mission[3].east_mm && Start.north_mm == mission[3].north_mm)break;
   //              test_path();
