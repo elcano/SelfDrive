@@ -91,18 +91,11 @@ using namespace elcano;
 Adafruit_LSM303_Mag mag = Adafruit_LSM303_Mag(1366123);
 
 long CurrentHeading = -1;
-SerialData C6_Results;
 
 // On the Ethernet Shield, CS is pin 4. Note that even if it's not
 // used as the CS pin, the hardware CS pin (10 on most Arduino boards,
 // 53 on the Mega) must be left as an output or the SD library
 // functions will not work.
-
-//get rid later rathtana
-#ifdef SIMULATOR
-#include <Elcano_simulator.h>
-#endif
-
 
 namespace C6_Navigator
 {
@@ -128,9 +121,6 @@ namespace C6_Navigator
 */
 
 
-#ifdef SIMULATOR
-namespace C6_Navigator {
-#endif
 // limited to 8+3 characters
 //#define FILE_NAME "GPSLog.csv"
 
@@ -230,19 +220,14 @@ long GetHeading(void)
 }
 
 /*---------------------------------------------------------------------------------------*/
-void initialize()
-{
+bool initial_position(){
   pinMode(GPS_POWER, OUTPUT);
   char* GPSString;
   char* protocol  =  "$PSRF100,1,4800,8,1,0*0E"; // NMEA
   char* disable =   "$PSRF103,02,00,00,01*26\r\n";
   char* querryGGA = "$PSRF103,00,01,00,01*25";
   bool GPS_available = false;
-  Serial3.begin(GPSRATE);
-  digitalWrite(GPS_POWER, LOW);         // pull low to turn on!
-  Serial.flush();
-  Serial3.flush();
-  delay(5000);
+
 // prints title with ending line break
 // Serial.println(" GPS parser");
 // Serial.print("Acquiring GPS RMC...");
@@ -252,8 +237,14 @@ void initialize()
   common::checksum(disable);
   Serial3.println(disable);   // no GSA
 
-//GPS_available = estimated_position.AcquireGPRMC(200);
-  
+GPS_available = estimated_position.AcquireGPGGA(200);
+if(!GPS_available) {
+  GPS_available = estimated_position.AcquireGPRMC(200);
+      if (GPS_available) {
+    estimated_position.sigma_mm = 1.0E4; // 10 m standard deviation
+    Serial.println("OK");
+  }
+}
  /* Serial.println(TimeHeader);
   Serial.println(StartTime);
   Serial.println(RawKF);
@@ -261,33 +252,15 @@ void initialize()
   Serial.print(Header);
   Serial.println(ObstHeader);
   */
-  if (/*GPS_available*/ true)
-  {
-    estimated_position.sigma_mm = 1.0E4; // 10 m standard deviation
-    Serial.println("OK");
-  }
-  else
-  {
-    estimated_position.latitude = 47.62130;  // set by hand here
-    estimated_position.longitude = -122.35090;
-    estimated_position.Compute_mm();
-    estimated_position.sigma_mm = 1.0E5; // 100 m standard deviation
-    estimated_position.time_ms = millis();
-    Serial.println("Failed");
-//    while(1){}
-  }
+
   // Set velocity and acceleration to zero.
-  estimated_position.speed_mmPs = 56;
+  estimated_position.speed_mmPs = 0;
   // Set attitude.
+  
+  //not sure if the compass gives the direction of the trike.....
   estimated_position.Evector_x1000 = 1000;  // to be taken from path or set by hand
   estimated_position.Nvector_x1000 = 60;
   
-  //invalid convertion from int to elcano::waypoint*
-  //GPS_reading = 100;// estimated_position;
-  
-  //GPSString = 100;//estimated_position.formPointString();
-                                          Serial.println(GPSString);
-
   // Set Odometer to 0.
   // Set lateral deviation to 0.
   // Read compass.
@@ -295,7 +268,6 @@ void initialize()
   CurrentHeading = GetHeading();
   
   // ReadINU.
-  // SendState(C4);
     // Wait to get path from C4
 //    while (mission[1].latitude > 90)
     {
@@ -306,21 +278,13 @@ void initialize()
        Read GPS, compass and IMU and update their estimates.
      */
     }
-    /* disable GPS messages;
-    for (char i='0'; i < '6'; i++)
-    {
-      disable[9] = i;
-      checksum(disable);
-      Serial3.println(disable);
-    }
-    Serial3.println(querryGGA);
-    */
-//    GPS_available = GPS_reading.AcquireGPGGA(300);
+    
+    // GPS_available = GPS_reading.AcquireGPGGA(300);
     // ready to roll
     // Fuse all position estimates.
     // Send vehicle state to C3 and C4.
     
-    
+    return GPS_available;
 }
 
 /*---------------------------------------------------------------------------------------*/
@@ -340,8 +304,10 @@ void setup()
    
     Serial.begin(9600);
     Serial1.begin(baudrate);
+    Serial.flush();
     Serial2.begin(baudrate);
     Serial3.begin(GPSRATE); // GPS
+    Serial3.flush();
     digitalWrite(GPS_POWER, LOW);         // pull low to turn on!
     // make sure that the default chip select pin is set to
     // output, even if you don't use it:
@@ -351,7 +317,7 @@ void setup()
     pinMode(GPS_GREEN_LED, OUTPUT);
     digitalWrite(GPS_GREEN_LED, LOW);
     digitalWrite(GPS_RED_LED, LOW);
-
+    
     /* Initializing old PositionData struct to default values
      *  Added by Varsha
      *  Modified by Pooja - SerialData and ParseState are removed as elcanoSerial.h 
@@ -369,58 +335,24 @@ void setup()
     oldPos.time_ms = millis();
 
     //Enable auto-gain
-    // mag.enableAutoRange(true);
+    mag.enableAutoRange(true);
 
 
   
     //Initialise the sensor
     delay(100);
 
-//  if(!mag.begin())
+  if(!mag.begin())
 //  {
 //    There was a problem detecting the LSM303 ... check your connections
-//    Serial.println("Ooops, no LSM303 detected ... Check your wiring!");
+    Serial.println("Ooops, no LSM303 detected ... Check your wiring!");
 //    while(1);
 //  }
-//  mag.begin();
-    initialize();
-    
-    Serial.print("Initializing GPS SD card...");
-
-//   see if the card is present and can be initialized:
-//   if (!SD.begin(chipSelect))
-//  {
-//    Serial.println("Card failed, or not present");
-//    digitalWrite(GPS_RED_LED, HIGH);
-//  }
-//  else
-//  {
-//    Serial.println("card initialized.\n");
-//    dataFile = SD.open(GPSfile, FILE_WRITE);
-//    // if the file is available, write date and time to it:
-//    if (dataFile)
-//    {
-//        dataFile.println(TimeHeader);
-//        dataFile.println(StartTime);
-//        dataFile.println(RawKF);
-//        dataFile.print(Header);
-//        dataFile.print(Header);
-//        dataFile.println(ObstHeader);
-//        dataFile.close();
-//    }
-//  }
-//  dataFile.println(35);
-//  dataFile.println(56);
-//  dataFile.println(35);
-//  dataFile.println(56);
-//  dataFile.println(35);
-//  dataFile.println(56);
-    
-    // Commented by Varsha as low-level routine will be used from C2
-    //pinMode(CYCLOMETER, INPUT);
-    //attachInterrupt (5, WheelRev, RISING);
-    
-
+    mag.begin();
+    bool got_initial_position = initial_position();
+    while(!got_initial_position) {
+      got_initial_position = initial_position();
+    }  
 }
 /*---------------------------------------------------------------------------------------*/
 void waypoint::SetTime(char *pTime, char * pDate)
@@ -474,15 +406,15 @@ void loop()
    ps.dt = &data;
    ps.input = &Serial2;
    ps.output = &Serial2;
-
-   data.clear();
+   
    // Read data from C2 using Elcano_Serial
   ParseStateError r = ps.update();
   Serial.println("done");
   Serial.println(static_cast<int8_t>(r));
   Serial.println(data.speed_cmPs);
   Serial.println(data.speed_cmPs);
-  data.write(&Serial1);
+  //data.write(&Serial1);
+  long time_ms = millis();
    if(r == ParseStateError::success) 
     {
       
@@ -491,15 +423,27 @@ void loop()
           
       newPos.speed_cmPs = data.speed_cmPs;
       newPos.bearing_deg = CurrentHeading;
-      newPos.time_ms = time;
+      newPos.time_ms = time_ms;
+    }
+    else {
+        //Extrapolate DR to present position 
+        float theta = (90 - newPos.bearing_deg) * PI / 180;
+        newPos.x_Pos_mm += (time_ms - newPos.time_ms) * 1000 * (newPos.speed_cmPs /10) * cos(theta);
+        newPos.y_Pos_mm += (time_ms - newPos.time_ms) * 1000 * (newPos.speed_cmPs /10) * sin(theta);
+    } 
+      
+      //Extrapolate GPS to present position
+      GPS_reading.east_mm += (time_ms - GPS_reading.time_ms) * (newPos.speed_cmPs /10) * GPS_reading.Evector_x1000;
+      GPS_reading.north_mm += (time_ms - GPS_reading.time_ms) * (newPos.speed_cmPs /10) * GPS_reading.Nvector_x1000;
+      
     
       ComputePositionWithDR(oldPos, newPos);
     
       // Populate PositionData struct
       PositionData gps, fuzzy_out;
     
-      gps.x_Pos = estimated_position.east_mm;
-      gps.y_Pos = estimated_position.north_mm;
+      gps.x_Pos_mm = estimated_position.east_mm;
+      gps.y_Pos_mm = estimated_position.north_mm;
   
   
       
@@ -511,56 +455,16 @@ void loop()
       TranslateCoordinates(oldPos, fuzzy_out, 1);
   
       // Update old position to new position 
-      CopyData(oldPos, newPos);
       
-      // Copy GPS fuzzy output to C4
-      data.kind = MsgType::sensor;
       // speed already set
-      data.posE_cm = fuzzy_out.x_Pos /10;
-      data.posN_cm = fuzzy_out.y_Pos /10;
-      data.bearing_deg = CurrentHeading / HEADING_PRECISION;
-      data.angle_mDeg = 0;
-  
-      Serial.println(String(fuzzy_out.x_Pos) + ", " + String(fuzzy_out.y_Pos));
-      data.write(&Serial2);
-      //data.write(&Serial3);
-      
+      float deltaX = estimated_position.east_mm - fuzzy_out.x_Pos_mm;
+      float deltaY = estimated_position.north_mm - fuzzy_out.y_Pos_mm;
+      float distance = sqrt(deltaX * deltaX + deltaY * deltaY);
+      if(distance != 0) {
+         estimated_position.Evector_x1000 = deltaX / distance; 
+         estimated_position.Nvector_x1000 = deltaY / distance;
+      }
+      estimated_position.east_mm = fuzzy_out.x_Pos_mm;
+      estimated_position.north_mm = fuzzy_out.y_Pos_mm;
     
-    C6_Results.clear();    
-    C6_Results.posE_cm = estimated_position.east_mm/10;
-    C6_Results.posN_cm = estimated_position.north_mm/10;
-    C6_Results.kind = MsgType::sensor;
-    C6_Results.speed_cmPs = newPos.speed_cmPs;
-    C6_Results.bearing_deg = newPos.bearing_deg;
-
-    //C6_Results (SerialData in Elcano Serial libaray) doesn't have a varaible that represents time_ms 
-    //We would have to manually add that variable to the struct if we 
-    //want to store it in C6_Results 
-    newPos.time_ms = time;	
-    
-  
     }
-}
-   
-
-
-//#ifdef SIMULATOR
-//} // end namespace
-//#else
-//void Show(char* x)
-//{
-//  Serial.print(x);
-//}
-//void Show(REAL x){
-//  Serial.print(x);
-//  Serial.print(", ");
-//}
-//#endif
-
-/* Entry point for the simulator.
-   This could be done with namespace, but the Arduino IDE does not handle preprocessor statements
-   wrapping a namespace in the standard way.
-
-void C6_Navigator_setup() { C6_Navigator::setup(); }
-
-void C6_Navigator_loop() { C6_Navigator::loop(); }*/
