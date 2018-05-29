@@ -10,11 +10,9 @@ using namespace elcano;
 // Wheel Circumference
 #define WHEEL_CIRCUM_MM (long) (WHEEL_DIAMETER_MM * PI)
 //Interrupt from the speedometer
-#define IRPT_WHEEL 2
+#define IRPT_WHEEL 3
 #define MMPS2KMPH(speed_mmPs) (speed_mmPs* 0.0036)
 //#define MMPS2KMPH(speed_mmPs) (speed_mmPs* MEG/3600)
-
-//This is the end of the <Setting.h>
 
 long startTime;
 
@@ -31,7 +29,7 @@ static struct hist {
   // results of every interrupt
 } history;
 
-// 10 milliseconds -- atordjust to accomodate the fastest needed response or
+// 10 milliseconds -- adjust to accomodate the fastest needed response or
 // sensor data capture.
 #define LOOP_TIME_MS 100
 
@@ -68,7 +66,7 @@ SerialData SendData, ReceiveData;
 
 // sending the actual speed 
 long SpeedCyclometer_mmPs = 0;
-long actual_speed = 0; 
+//long actual_speed = 0; 
 long wheel_angle = 6;
 
 // receiving data
@@ -115,13 +113,11 @@ void loop2() {
   
     // Sending data 
     // Update code here that does not depend on having received a data set
-    SendData.clear(); 
-    SendData.kind = MsgType::drive;
-    SendData.speed_mmPs = sendData(actual_speed);
-    SendData.angle_mDeg = wheel_angle;
-    SendData.write(&Serial3);
-
-    
+      SendData.clear(); 
+      SendData.kind = MsgType::drive;
+      SendData.speed_mmPs = sendData(SpeedCyclometer_mmPs);
+      SendData.angle_mDeg = wheel_angle;
+      SendData.write(&Serial3);   
 }
 
 void loop() {
@@ -142,9 +138,7 @@ void loop() {
     // roll over back to zero after they exceed the 32-bit size of unsigned long,
     // which happens after about 1.5 months of operation (
     nextTime = millis() + LOOP_TIME_MS;
-
-    
-    //setLeftSpeed(5); 
+ 
     setLeftSpeed(MMPS2KMPH(SpeedCyclometer_mmPs));
     
     if(pre_desired_speed != desired_speed){
