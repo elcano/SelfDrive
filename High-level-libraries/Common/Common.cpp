@@ -169,20 +169,20 @@ namespace elcano {
 										 double x3, double y3, double x4, double y4)
 	{
 	if (x1 == x2 && x3 == x4)
-		return ((x1+x2)/2);
+		return ((x1+x2)/2.0);
 	if(x1 == x2)
 		return x1;
 	if(x3 == x4)
 		return 3;
 	
 	/* yc = (y4-y3)/(x4-x3)*(xc-x3) + y3 = (y2-y1)/(x2-x1)*(xc-x1)+y1 */
-	double slope1 = (y2-y1)/(x2-x1);
-	double slope3 = (y4-y3)/(x4-x3);
+	double slope1 = (y2-y1)/(double)(x2-x1);
+	double slope3 = (y4-y3)/(double)(x4-x3);
 	
 	if(slope3 == slope1)
-		return ((x2+x2+x3)/4);
+		return ((x2+x2+x3)/4.0);
 	
-	double xc = (slope3 * x3 - y3 - slope1 * x1 + y1) / (slope3-slope1);
+	double xc = (slope3 * x3 - y3 - slope1 * x1 + y1) / (double)(slope3-slope1);
 	return xc;
 	}
 	
@@ -208,9 +208,9 @@ namespace elcano {
 			//Serial.print(",distance:");
 			//Serial.println(newData.distance_mm);
 		
-			newData.east_mm = oldData.east_mm + cos((newData.bearing_deg / HEADING_PRECISION) * TO_RADIANS) * distance_mm;
+			newData.east_mm = oldData.east_mm + cos((newData.bearing_deg) * TO_RADIANS) * distance_mm;
 		
-			newData.north_mm = oldData.north_mm + sin((newData.bearing_deg / HEADING_PRECISION) * TO_RADIANS) * distance_mm;
+			newData.north_mm = oldData.north_mm + sin((newData.bearing_deg) * TO_RADIANS) * distance_mm;
 		
 		
 			//Serial.print("ComputePositionWithDR::X_pos:");
@@ -222,7 +222,7 @@ namespace elcano {
 	/* This function finds fuzzy crosspoint between GPS & Dead reckoning data
 	 waypoint &gps -> GPS input
 	 waypoint &dr   -> Dead reckoning input
-	 waypoint &fuzzy_out -> Fuzzy output for estimated_position
+	 waypoint &estimated_position -> update estimated_position
 	 */
 	void FindFuzzyCrossPointXY(waypoint &gps, waypoint &dr, waypoint &estimated_position)
 	{
@@ -236,56 +236,58 @@ namespace elcano {
 	
 	if (abs(gps.east_mm - dr.east_mm) > abs(gps.north_mm - dr.north_mm))
 		{  // more change in east
+			//Serial.println("more east");
 			if (gps.east_mm >= dr.east_mm)
 				{  // cross point is intersection of line down from DR and line up to GPS
-					// DR down line is from (dr->east_mm, 1) to (dr->east_mm + dr_>sigma_mm,0)
+					// DR down line is from (dr->east_mm, 1) to (dr->east_mm + DR_ERROR_mm, 0)
 					// line up to GPS is from (gps->east_mm - gps->sigma_mm, 0) to (gps->east_mm, 1)
-					estimated_position.east_mm = CrossPointX(dr.east_mm,1., dr.east_mm + DR_ERROR_mm, 0,
-																										gps.east_mm - gps.sigma_mm, 0.,gps.east_mm, 1.);
+					estimated_position.east_mm = CrossPointX(dr.east_mm,1, dr.east_mm + DR_ERROR_mm, 0,
+																										gps.east_mm - gps.sigma_mm, 0., gps.east_mm, 1);
 				}
 			else
 				{  // cross point is intersection of line down from GPS and line up to DR
-					estimated_position.east_mm = CrossPointX(dr.east_mm - DR_ERROR_mm,0., dr.east_mm, 1.,
-																										gps.east_mm, 1.,gps.east_mm + gps.sigma_mm, 0.);
+					estimated_position.east_mm = CrossPointX(dr.east_mm - DR_ERROR_mm,0., dr.east_mm, 1,
+																										gps.east_mm, 1,gps.east_mm + gps.sigma_mm, 0.);
 				}
 			// north position is proportional to east position
 			if (gps.north_mm >= dr.north_mm)
 				{
 				estimated_position.north_mm = dr.north_mm + (gps.north_mm - dr.north_mm) *
-				abs((gps.east_mm-estimated_position.east_mm)/(gps.east_mm - dr.east_mm));
+				abs((gps.east_mm-estimated_position.east_mm)/(double)(gps.east_mm - dr.east_mm));
 				}
 				else
 					{
 					estimated_position.north_mm = gps.north_mm + (dr.north_mm - gps.north_mm) *
-					abs((gps.east_mm-estimated_position.east_mm)/(gps.east_mm - dr.east_mm));
+					abs((gps.east_mm-estimated_position.east_mm)/(double)(gps.east_mm - dr.east_mm));
 					}
 		}
 	else
 		{  // more change in north
 			// TO DO: similar to above, but swap east and north
+			//Serial.println("more north");
 			if(gps.north_mm >= dr.north_mm)
 				{
 				// cross point is intersection of line down from DR and line up to GPS
-				// DR down line is from (1, dr->east_mm) to (0, dr->north_mm + dr_>sigma_mm)
-				// line up to GPS is from (gps->east_mm - gps->sigma_mm, 0) to (gps->east_mm, 1)
-				estimated_position.north_mm = CrossPointX(1.,dr.north_mm, 0, dr.north_mm + DR_ERROR_mm,
-																									0, gps.north_mm - gps.sigma_mm, 1., gps.north_mm);
+				// DR down line is from (1, dr->north_mm) to (0, dr->north_mm + DR_ERROR_mm)
+				// line up to GPS is from (0, gps->north_mm - gps->sigma_mm) to (1, gps->north_mm)
+				estimated_position.north_mm = CrossPointX(dr.north_mm,1, dr.north_mm + DR_ERROR_mm, 0,
+																								 gps.north_mm - gps.sigma_mm, 0., gps.north_mm, 1);
 				}
 			else
 				{	// cross point is intersection of line down from GPS and line up to DR
-					estimated_position.north_mm = CrossPointX(0, dr.north_mm - DR_ERROR_mm, 1., dr.north_mm,
-																									 1., gps.north_mm, 0, gps.north_mm + gps.sigma_mm);
+					estimated_position.north_mm = CrossPointX(dr.north_mm - DR_ERROR_mm,0., dr.north_mm, 1,
+																									 gps.north_mm, 1,gps.north_mm + gps.sigma_mm, 0.);
 				}
 			// east position is proportional to north position
 			if (gps.east_mm >= dr.east_mm)
 				{
 				estimated_position.east_mm = dr.east_mm + (gps.east_mm - dr.east_mm) *
-				abs((gps.north_mm-estimated_position.north_mm)/(gps.north_mm - dr.north_mm));
+				abs((gps.north_mm-estimated_position.north_mm)/(double)(gps.north_mm - dr.north_mm));
 				}
 				else
 					{
 					estimated_position.east_mm = gps.east_mm + (dr.east_mm - gps.east_mm) *
-					abs((gps.north_mm-estimated_position.north_mm)/(gps.north_mm - dr.north_mm));
+					abs((gps.north_mm-estimated_position.north_mm)/(double)(gps.north_mm - dr.north_mm));
 					}
 		}
 	}
@@ -502,9 +504,9 @@ namespace elcano {
 		}
 	}
 	// Calculate and compute the E and N vector 
-	void waypoint::Compute_EandN_Vectors(long heading) {
-		Evector_x1000 = cos((heading / HEADING_PRECISION) * TO_RADIANS) * 1000;
-		Nvector_x1000 =	 sin((heading / HEADING_PRECISION) * TO_RADIANS) * 1000;
+	void waypoint::Compute_EandN_Vectors(long heading_deg) {
+		Evector_x1000 = cos((heading_deg) * TO_RADIANS) * 1000;
+		Nvector_x1000 =	 sin((heading_deg) * TO_RADIANS) * 1000;
 	}
 
 //----------------------------------------------------------
