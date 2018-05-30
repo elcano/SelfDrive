@@ -67,7 +67,6 @@ Origin origin(47.758949, -122.190746);
 SerialData ReceiveData, SendData;
 ParseState ps, ps3;
 
-int count = 0;
 /*---------------------------------------------------------------------------------------*/
 /**
    All C6 Methods start here
@@ -548,21 +547,7 @@ void setup() {
 }
 
 void loop() {
-  count++;
-  if (count == 1000) {
-    speed_mmPs = 2225; //8
-    turn_direction_angle = 40;
-  }
-  else if (count == 2000) {
-    speed_mmPs = 2800; //10
-    turn_direction_angle = 0;
-  }
-  else if (count == 3000) {
-    speed_mmPs = 1390;  //5
-    turn_direction_angle = -5;
-  }
-
-
+   
   // start our timer
   //  long time_start = millis();
 
