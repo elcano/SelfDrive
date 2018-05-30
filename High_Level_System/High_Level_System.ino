@@ -3,69 +3,70 @@
 #include <SD.h>
 #include <IODue.h>
 #include <ElcanoSerial.h>
+#include <Serial_Communication.h>
 #include <Wire.h>
 #include <Adafruit_LSM303_U.h>
 #include <FusionData.h>
 #include <Adafruit_GPS.h>
 
-//Creating GPS object 
-Adafruit_GPS GPS(&Serial3);
-/* Assign a unique ID to this sensor at the same time */
-Adafruit_LSM303_Mag_Unified mag(1366123);
+// Set GPSECHO to 'false' to turn off echoing the GPS data to the Serial console
+// Set to 'true' if you want to debug and listen to the raw GPS sentences.
+#define GPSECHO  true
+
+#define mySerial Serial3
+Adafruit_GPS GPS(&mySerial);
+
 
 using namespace elcano;
+
+/* Assign a unique ID to this sensor at the same time */
+Adafruit_LSM303_Mag_Unified mag = Adafruit_LSM303_Mag_Unified(12345);
 
 enum States { STOP, STRAIGHT, ENTER_TURN, LEAVE_TURN, APPROACH_GOAL, LEAVE_GOAL};
 States state;
 
-#define DESIRED_SPEED_mmPs 2235
-const long default_speed_mmPs = DESIRED_SPEED_mmPs;
-const long slow_speed_mmPs = 100;
-const long turn_speed = 500;
-const long MIN_TURNING_RADIUS = 2400;
-long speed_mmPs = default_speed_mmPs;
-//index to path in a list
-int next = 1;
-
-waypoint path[MAX_WAYPOINTS];  // course route to goal/mission
-
 #define GPSRATE 9600
-
-File dataFile;
-char GPSfile[BUFFSIZ] = "mmddhhmm.csv";
-char ObstacleString[BUFFSIZ];
-char StartTime[BUFFSIZ] = "yy,mm,dd,hh,mm,ss,xxx";
-const char TimeHeader[] = "year,month,day,hour,minute,second,msec";
-const char* RawKF = "Raw GPS data,,,,,,Kalman Filtered data";
-const char* Header = "Latitude,Longitude,East_m,North_m,SigmaE_m,SigmaN_m,Time_s,";
-const char* ObstHeader = "Left,Front,Right,Busy";
-
-long CurrentHeading = -1;
-SerialData data, C3Results;
-ParseState ps, ps3;
-
-/* time (micro seconds) for a wheel revolution */
-//volatile long Odometer_mm = 0;
-//volatile long SpeedCyclometer_mmPs;
-//// Speed in degrees per second is independent of wheel size.
-//volatile long SpeedCyclometer_degPs;
-
-// waypoint mission[MAX_WAYPOINTS];
-waypoint GPS_reading;
-waypoint estimated_position;
-//instrument IMU;
-const unsigned long LoopPeriod = 100;  // msec
-
-PositionData oldPos, newPos;
-
-//last is the the last index of the Path. Path[last] is the destination
-int last_index_of_path;
-
+#define DESIRED_SPEED_mmPs 1390 //5mph
+#define SLOW_SPEED_mmPs 833 //1-2mph
 #define currentlocation  -1 //currentLocation
+#define CONES 1
 
 extern bool DataAvailable;
+bool got_GPS = false;
+const long turn_speed = 500;
+const long MIN_TURNING_RADIUS = 2400;
+long speed_mmPs = DESIRED_SPEED_mmPs;
+const unsigned long LoopPeriod = 100;  // msec
+
+int next = 1; //index to path in a list
+//last is the the last index of the Path/goal
+int last_index_of_path = 3; //hardcode path of the last index/dest to 3 [cur,loc1,loc2,goal]
+long current_heading = -1;
+long pre_desired_speed = 0;
+long turn_direction_angle = 0;
+long pre_turn_angle = 0;
+long extractSpeed = 0; //alternative to checksum since it's not implemented
+extern int map_points =  5;//16;
+
+//for calculating the E and N unit vector
+double delta_east, delta_north, vector_distance;
+
+junction Nodes[MAX_WAYPOINTS]; //Storing the loaded map
+
+//waypoint path[MAX_WAYPOINTS];  // course route to goal/mission
+waypoint path[3]; //3 is hardcoded 
+
+waypoint mission[CONES]; // aka MDF //The target Nodes to hit
+waypoint GPS_reading, estimated_position, oldPos, newPos, fuzzy_out, Start;
+ 
+Origin origin(47.758949, -122.190746);  //origin is hardcorded for now to set it to the UWB map
+//Origin origin;
+
+SerialData ReceiveData, SendData;
+ParseState ps, ps3;
 
 #define CONES 1
+//pre-defined goal/destination to get to
 long goal_lat[CONES] = {47760934};
 long goal_lon[CONES] = { -122189963};
 //long goal_lat[CONES] = {  47621881,   47621825,   47623144,   47620616,   47621881};
@@ -83,8 +84,6 @@ long goal_lon[CONES] = { -122189963};
      60  26822
 */
 
-extern int map_points =  5;//16;
-junction Nodes[MAX_WAYPOINTS];
 struct AStar
 {
   int ParentID;
@@ -93,157 +92,140 @@ struct AStar
   long TotalCost;
 } Open[MAX_WAYPOINTS];
 
-
-waypoint Origin, Start;
-
-waypoint mission[CONES];  // aka MDF //The target Nodes to hit
-
 /*---------------------------------------------------------------------------------------*/
 /**
    All C6 Methods start here
 */
 /*---------------------------------------------------------------------------------------*/
-long GetHeading(void) {
-  //Get a new sensor event from the magnetometer
-  sensors_event_t event;
-  mag.getEvent(&event);
+void populatePath() {
+  waypoint path0, path1, path2, path3;
 
-  //    Serial.print("X:");
-  //    Serial.print(event.magnetic.x);
-  //    Serial.print(" Y:");
-  //    Serial.print(event.magnetic.y);
-  //    Serial.print(" z:");
-  //    Serial.print(event.magnetic.z);
-  //    Serial.println("");
+  //needs to get the heading for all
+  path0.latitude = 47.761116;
+  path0.longitude = -122.190283;
+  path0.Compute_mm(origin);
 
-  //Calculate the current heading (angle of the vector y,x)
-  //Normalize the heading
-  float heading = (atan2(event.magnetic.y, event.magnetic.x) * 180) / M_PI;
+  path1.latitude = 47.761076;
+  path1.longitude = -122.190266;
+  path1.Compute_mm(origin);
 
-  if (heading < 0)  {
-    heading = 360 + heading;
-  }
-  // Converting heading to x1000
-  return ((long)(heading * HEADING_PRECISION));
-  //    return heading;
+  path2.latitude = 47.761043;
+  path2.longitude = -122.190218;
+  path2.Compute_mm(origin);
+
+
+  path3.latitude = 47.761091;
+  path3.longitude = -122.190218;
+  path3.Compute_mm(origin);
+
+  path[0] = path0;
+  path[1] = path1;
+  path[2] = path2;
+  path[3] = path3;
+
 }
-/*---------------------------------------------------------------------------------------*/
-bool initial_position() {
-  char* GPSString;
-  char* protocol  =  "$PSRF100,1,4800,8,1,0*0E"; // NMEA
-  char* disable =   "$PSRF103,02,00,00,01*26\r\n";
-  char* querryGGA = "$PSRF103,00,01,00,01*25";
-  bool GPS_available = false;
-
-  // prints title with ending line break
-  // Serial.println(" GPS parser");
-  // Serial.print("Acquiring GPS RMC...");
-  common::checksum(protocol);
-  Serial3.println(protocol);
-  disable[10] = '2';
-  common::checksum(disable);
-  Serial3.println(disable);   // no GSA
-
-
-
-  GPS_available = estimated_position.AcquireGPGGA(300);
-  if (!GPS_available) {
-    GPS_available = estimated_position.AcquireGPRMC(300);
-    if (GPS_available) {
-      estimated_position.sigma_mm = 1.0E4; // 10 m standard deviation
-      Serial.println("OK");
-    }
-  }
-  //Checking to see the we are able to get the GPS latitude and lontitude
-  Serial.print("Gps latitude: ");
-  Serial.println(estimated_position.latitude);
-  Serial.print("GPS longtitude: ");
-  Serial.println(estimated_position.longitude);
-
-  /* Serial.println(TimeHeader);
-    Serial.println(StartTime);
-    Serial.println(RawKF);
-    Serial.print(Header);
-    Serial.print(Header);
-    Serial.println(ObstHeader);
-  */
-
-  // Set velocity and acceleration to zero.
-  estimated_position.speed_mmPs = 0;
-  // Set attitude.
-
-  //not sure if the compass gives the direction of the trike.....
-  estimated_position.Evector_x1000 = 1000;  // to be taken from path or set by hand
-  estimated_position.Nvector_x1000 = 60;
-
-  // Set Odometer to 0.
-  // Set lateral deviation to 0.
-  // Read compass.
-  // Added by Varsha - To get heading data
-  CurrentHeading = GetHeading();
-
-  // ReadINU.
-  // Wait to get path from C4
-  //    while (mission[1].latitude > 90)
-  //{
-  /* If (message from C4)
-    {
-    ReadState(C4);  // get initial route and speed
-    }
-    Read GPS, compass and IMU and update their estimates.
-  */
-  //  }
-
-  // GPS_available = GPS_reading.AcquireGPGGA(300);
-  // ready to roll
-  // Fuse all position estimates.
-  // Send vehicle state to C3 and C4.
-
-  return GPS_available;
-}
-
-void setup_C6() {
-  //randomSeed(analogRead(0));
-  //    pinMode(Rx0, INPUT);
-  //    pinMode(Tx0, OUTPUT);
-  //    pinMode(GPS_RX, INPUT);
-  //    pinMode(GPS_TX, OUTPUT);
-  //    pinMode(C4_RX, INPUT);
-  //    pinMode(C4_TX, OUTPUT);
-  //    pinMode(INU_RX, INPUT);
-  //    pinMode(INU_TX, OUTPUT);
-  //    pinMode(GPS_POWER, OUTPUT);
-
-  Serial.begin(9600);
-  Serial1.begin(baudrate);
-  Serial.flush();
-  Serial2.begin(baudrate);
+void setup_GPS() {
+  //Serial 3 is used for GPS
+  mySerial.begin(9600);
   GPS.begin(9600);
-  Serial3.begin(GPSRATE); // GPS
 
   // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
-  // GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  //GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
   // uncomment this line to turn on only the "minimum recommended" data
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
   // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
   // the parser doesn't care about other sentences at this time
 
   // Set the update rate
-  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);   // 1 Hz update rate
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);   // 1 Hz update rate
   // For the parsing code to work nicely and have time to sort thru the data, and
   // print it out we don't suggest using anything higher than 1 Hz
 
   // Request updates on antenna status, comment out to keep quiet
   GPS.sendCommand(PGCMD_ANTENNA);
+}
+bool AcquireGPS(waypoint &gps_position) {
+  float latitude, longitude;
 
-  // make sure that the default chip select pin is set to
-  // output, even if you don't use it:
-  pinMode(chipSelect, OUTPUT);
+  char c;
+  //read atleast 10 characters everyloop speed up update time
+  for (int i = 0; i < 25; i++)
+    c = GPS.read();
 
-  Serial.println("Start C6 setup");
-  
-  oldPos.Clear();
-  oldPos.time_ms = millis();
+  // if a sentence is received, we can check the checksum, parse it...
+  if (GPS.newNMEAreceived()) {
+    // a tricky thing here is if we print the NMEA sentence, or data
+    // we end up not listening and catching other sentences!
+    // so be very wary if using OUTPUT_ALLDATA and trytng to print out data
+    //Serial.println(GPS.lastNMEA());   // this also sets the newNMEAreceived() flag to false
+
+    if (!GPS.parse(GPS.lastNMEA()))   // this also sets the newNMEAreceived() flag to false
+      return false;  // we can fail to parse a sentence in which case we should just wait for another
+
+    if (GPS.fix) {
+
+
+      gps_position.latitude = GPS.latitudeDegrees;
+      gps_position.longitude = GPS.longitudeDegrees;
+
+      //      Serial.println(GPS.latitudeDegrees, 6);
+      //      Serial.println(GPS.longitudeDegrees, 6);
+
+
+
+
+      return true;
+    }
+    return false;
+  }
+}
+
+//setup Elcano serial communication for recieving data from C2
+//Recieving actual_speed and an arbitary angle(for the moment)
+void C6_communication_with_C2() {
+  //setting up receiving data for C6 elcano communication
+  ps.dt = &ReceiveData;
+  ps.input = &Serial2;
+  ps.output = &Serial2;
+  ps.capture = MsgType::drive;
+  ReceiveData.clear();
+}
+
+long getHeading(void) {
+  //Get a new sensor event from the magnetometer
+  sensors_event_t event;
+  mag.getEvent(&event);
+
+  //Calculate the current heading (angle of the vector y,x)
+  //Normalize the heading
+  float heading = (atan2(event.magnetic.y, event.magnetic.x) * 180) / PIf;
+
+  if (heading < 0)  {
+    heading = 360 + heading;
+  }
+  return heading;
+}
+
+//Get your first initial position form the GPS
+void initial_position() {
+
+  bool GPS_available = AcquireGPS(estimated_position);
+
+  //Get initial starting position
+  while (!GPS_available)
+    GPS_available = AcquireGPS(estimated_position);
+
+  estimated_position.time_ms = millis();
+  estimated_position.Compute_EandN_Vectors(getHeading()); //get position E and N vector
+  estimated_position.Compute_mm(origin);  //initialize north and east coordinates for position
+
+  //oldPos to keep track of previous position for DR
+  oldPos = estimated_position;
+}
+
+void setup_C6() {
+  //setting up the GPS rate
+  setup_GPS();
 
   //Enable auto-gain
   mag.enableAutoRange(true);
@@ -254,128 +236,98 @@ void setup_C6() {
   if (!mag.begin()) {
     Serial.println("Ooops, no LSM303 detected ... Check your wiring!");
   }
-
   mag.begin();
-  bool got_initial_position = initial_position();
-  while (!got_initial_position) {
-    got_initial_position = initial_position();
 
-  }
-  Serial.println("Got the GPS Signal");
+  initial_position(); //getting your initial position from GPS
 
-  //setting up C6 elcano communication
-  data.clear();
-  Serial2.end();
-  Serial2.begin(baudrate);
-  ps.dt = &data;
-  ps.input = &Serial2;
-  ps.output = &Serial2;
-  ps.capture = MsgType::drive;
+  Serial.print("current east: "); Serial.println(estimated_position.east_mm);
+  Serial.print("current north: "); Serial.println(estimated_position.north_mm);
+  Serial.println();
 
-  Serial.println("Finish C6 setup");
-}
-
-void waypoint::SetTime(char *pTime, char * pDate) {
-  //GPSfile = "mmddhhmm.CSV";
-  strncpy(GPSfile,   pDate + 2, 2); // month
-  strncpy(GPSfile + 2, pDate, 2);  // day
-  strncpy(GPSfile + 4, pTime, 2);  // GMT hour
-  strncpy(GPSfile + 6, pTime + 2, 2); // minute
-  Serial.println(GPSfile);
-
-  strncpy(StartTime,     pDate + 4, 2); // year
-  strncpy(StartTime + 3,   pDate + 2, 2); // month
-  strncpy(StartTime + 6,   pDate, 2);  // day
-  strncpy(StartTime + 9,   pTime, 2);  // GMT hour
-  strncpy(StartTime + 12,  pTime + 2, 2); // minute
-  strncpy(StartTime + 15,  pTime + 4, 2); // second
-  strncpy(StartTime + 18,  pTime + 7, 3); // millisecond
+  //for recieving data from C2
+  C6_communication_with_C2();
 }
 
 void loop_C6() {
-  Serial.println("Start of C6 loop");
-  unsigned long deltaT_ms;
-  unsigned long time = millis();
-  unsigned long endTime = time + LoopPeriod;
-  unsigned long work_time = time;
-  int PerCentBusy;
-  char* pData;
-  char* pGPS;
-  char* pObstacles;
+  got_GPS = AcquireGPS(GPS_reading);
+  //try to get a new GPS position
+  if (got_GPS) {
+    GPS_reading.Compute_mm(origin); // get north and east coordinates from origin
+    GPS_reading.Compute_EandN_Vectors(getHeading()); //Get E and N vector
 
-  //trying to retrieve a new estimated position form the GPS reading
-  bool GPS_available = GPS_reading.AcquireGPGGA(30);
+    Serial.print("GPS east: "); Serial.println(GPS_reading.east_mm);
+    Serial.print("GPS north: "); Serial.println(GPS_reading.north_mm);
+    Serial.println();
 
-  //Use GPRMC if GPGGA failed
-  if (!GPS_available) {
-    GPS_available = GPS_reading.AcquireGPRMC(30);
-    if (GPS_available) {
-      //do i need this part below??
-      GPS_reading.sigma_mm = 1.0E4; // 10 m standard deviation
-      Serial.println("OK Got updated postion from GPS");
-    }
   }
+  //get heading coordinates from the compass
+  current_heading = getHeading();
+  newPos.time_ms = millis();
 
-  CurrentHeading = GetHeading();
-
-  // Fuse all position estimates with a Fuzzy Filter
-  deltaT_ms = GPS_reading.time_ms - estimated_position.time_ms;
-  estimated_position.fuse(GPS_reading, deltaT_ms);
-  estimated_position.time_ms = GPS_reading.time_ms;
-
-  // Read data from C2 using Elcano_Serial
-  //Asynchronous using Elcano_Serial
+  //Recieving data from C2 using Elcano_Serial
   ParseStateError r = ps.update();
-  long time_ms = millis();
   if (r == ParseStateError::success)  {
-    Serial.println("done");
-    Serial.println(static_cast<int8_t>(r));
-    Serial.println(data.speed_cmPs);
+    extractSpeed = receiveData(ReceiveData.speed_mmPs);
 
-    newPos.speed_cmPs = data.speed_cmPs;
-    newPos.bearing_deg = CurrentHeading;
-    newPos.time_ms = time_ms;
-  }
-  else  {
-    //Extrapolate DR to present position
-    float theta = (90 - newPos.bearing_deg) * PI / 180;
-    newPos.x_Pos_mm += (time_ms - newPos.time_ms) * 1000 * (newPos.speed_cmPs / 10) * cos(theta);
-    newPos.y_Pos_mm += (time_ms - newPos.time_ms) * 1000 * (newPos.speed_cmPs / 10) * sin(theta);
+    //elecano serial doesn't have checksum, this will prevent crazy amount of acceleration
+    //in less than a second
+    if (abs(extractSpeed - newPos.speed_mmPs) < 100)
+      newPos.speed_mmPs = receiveData(ReceiveData.speed_mmPs); //extract data
+
+    newPos.bearing_deg = current_heading;
+
+    //        Serial.print("speed from c2: "); Serial.print(newPos.speed_mmPs);
+    //       Serial.print(", angle from c2: "); Serial.println(ReceiveData.angle_mDeg);
   }
 
-  //Extrapolate GPS to present position
-  GPS_reading.east_mm += (time_ms - GPS_reading.time_ms) * (newPos.speed_cmPs / 10) * GPS_reading.Evector_x1000;
-  GPS_reading.north_mm += (time_ms - GPS_reading.time_ms) * (newPos.speed_cmPs / 10) * GPS_reading.Nvector_x1000;
-
-  // Update old position to new position
+  // calculate position using Dead Reckoning
   ComputePositionWithDR(oldPos, newPos);
 
-  // Populate PositionData struct
-  PositionData gps, fuzzy_out;
+  if (got_GPS) { //got both GPS and DeadReckoning
+    Serial.println("using GPS/DR");
 
-  gps.x_Pos_mm = estimated_position.east_mm;
-  gps.y_Pos_mm = estimated_position.north_mm;
+    //to get an esitimation position average between the GPS and Dead Rekoning
+    //estimated_position is updated to the current position inside this method
+    FindFuzzyCrossPointXY(GPS_reading, newPos, estimated_position);
+    estimated_position.time_ms = newPos.time_ms;  //update time of that positon 
 
-  // Translate GPS position
-  TranslateCoordinates(newPos, gps, 1);
-  RotateCoordinates(gps, newPos.bearing_deg, ROTATE_CLOCKWISE);
-  FindFuzzyCrossPointXY(gps, newPos.distance_mm, newPos.bearing_deg, fuzzy_out);
-  RotateCoordinates(fuzzy_out, newPos.bearing_deg, ROTATE_COUNTER_CLOCKWISE);
-  TranslateCoordinates(oldPos, fuzzy_out, 1);
+    //calculating the E and N unit vectors
+    //note: estimated_position is updated from above
+    delta_east = estimated_position.east_mm - oldPos.east_mm;
+    delta_north = estimated_position.north_mm - oldPos.north_mm;
+    vector_distance = sqrt(delta_east * delta_east + delta_north * delta_north);
 
-  // speed already set
-  float deltaX = estimated_position.east_mm - fuzzy_out.x_Pos_mm;
-  float deltaY = estimated_position.north_mm - fuzzy_out.y_Pos_mm;
-  float distance = sqrt(deltaX * deltaX + deltaY * deltaY);
-  if (distance != 0) {
-    estimated_position.Evector_x1000 = deltaX / distance;
-    estimated_position.Nvector_x1000 = deltaY / distance;
+    if (distance != 0) {
+      estimated_position.Evector_x1000 = 1000 * (delta_east / vector_distance);
+      estimated_position.Nvector_x1000 = 1000 * (delta_north / vector_distance);
+    }
   }
-  estimated_position.east_mm = fuzzy_out.x_Pos_mm;
-  estimated_position.north_mm = fuzzy_out.y_Pos_mm;
+  else { //Did not get a GPS reading and only got DeadReckoning
+    Serial.println("using DR");
+    //calculating the E and N unit vector
+    delta_east = newPos.east_mm - oldPos.east_mm;
+    delta_north = newPos.north_mm - newPos.north_mm;
+    vector_distance = sqrt(delta_east * delta_east + delta_north * delta_north);
 
-  Serial.println("End of C6 loop");
-}/*---------------------------------------------------------------------------------------*/
+    if (distance != 0) {
+      estimated_position.Evector_x1000 = 1000 * (delta_east / vector_distance);
+      estimated_position.Nvector_x1000 = 1000 * (delta_north / vector_distance);
+    }
+
+    //update new current positon
+    estimated_position.east_mm = newPos.east_mm;
+    estimated_position.north_mm = newPos.north_mm;
+    estimated_position.time_ms = newPos.time_ms;
+  }
+  //update oldPos to current positon
+  oldPos = estimated_position;
+  
+  Serial.print("new east: "); Serial.println(estimated_position.east_mm);
+  Serial.print("new north: "); Serial.println(estimated_position.north_mm);
+  Serial.println();
+}
+
+/*---------------------------------------------------------------------------------------*/
 /**
    All the Methods for C4 starts here
 */
@@ -405,7 +357,7 @@ void GetGoals(junction *nodes , int Goals)  {
   for (int i = 0; i < CONES; i++) {
     mission[i].latitude = goal_lat[i];
     mission[i].longitude = goal_lon[i];
-    mission[i].Compute_mm();
+    mission[i].Compute_mm(origin);
     mission[i].speed_mmPs = DESIRED_SPEED_mmPs;
     mission[i].index = 1 | GOAL;
     mission[i].sigma_mm = 1000;
@@ -555,23 +507,23 @@ void FindClosestRoad(waypoint *start, waypoint *road) {  //populate road with be
 //Test ClosestRoad:
 void test_closestRoad() {
 
-  waypoint roadOrigin;
+  waypoint roadorigin;
   waypoint roadDestination;
 
   Serial.println("First " );
-  FindClosestRoad(&mission[0], &roadOrigin);
+  FindClosestRoad(&mission[0], &roadorigin);
 
   Serial.println();
 
   Serial.println("Second ");
   FindClosestRoad(&mission[3], &roadDestination);
   for (int last = 0; last < 4; last++) {
-    Serial.println(" mission " + String(mission[last].east_mm ) + "\t roadOrigin " + String(roadOrigin.east_mm));
-    Serial.println(" mission " + String(mission[last].longitude ) + "\t roadOrigin " + String(roadOrigin.east_mm));
+    Serial.println(" mission " + String(mission[last].east_mm ) + "\t roadorigin " + String(roadorigin.east_mm));
+    Serial.println(" mission " + String(mission[last].longitude ) + "\t roadorigin " + String(roadorigin.east_mm));
   }
   for (int last = 0; last < 4; last++) {
-    Serial.println(" mission " + String(mission[last].east_mm ) + "\t roadOrigin " + String(roadDestination.east_mm));
-    Serial.println(" mission " + String(mission[last].longitude ) + "\t roadOrigin " + String(roadDestination.north_mm));
+    Serial.println(" mission " + String(mission[last].east_mm ) + "\t roadorigin " + String(roadDestination.east_mm));
+    Serial.println(" mission " + String(mission[last].longitude ) + "\t roadorigin " + String(roadDestination.north_mm));
   }
 }
 /*---------------------------------------------------------------------------------------*/
@@ -610,7 +562,7 @@ int BuildPath (int j, waypoint* start, waypoint* destination) { // Construct pat
     if (k > 0) path[k].sigma_mm = 10; // map should be good to a cm.
     path[k].index = k;
     path[k].speed_mmPs = DESIRED_SPEED_mmPs;
-    path[k].Compute_LatLon();  // this is never used
+    path[k].Compute_LatLon(origin);  // this is never used
   }
   last++;
   for (j = 0; j < last - 1; j++)  {
@@ -723,16 +675,16 @@ int FindPath(waypoint *start, waypoint *destination)  { //While OpenSet is not e
 int PlanPath (waypoint *start, waypoint *destination) {
 
   //Serial.println("Start : East_mm = " + String(start->east_mm) + "\t North_mm =  " + String(start->north_mm));
-  waypoint roadOrigin, roadDestination;
+  waypoint roadorigin, roadDestination;
 
   int last = 0;
   path[0] = start;
   path[0].index = 0;
 
-  FindClosestRoad( start, &roadOrigin );
+  FindClosestRoad( start, &roadorigin );
   FindClosestRoad( destination, &roadDestination );
 
-  int w = abs(start->east_mm  - roadOrigin.east_mm) + abs(start->north_mm - roadOrigin.north_mm);
+  int w = abs(start->east_mm  - roadorigin.east_mm) + abs(start->north_mm - roadorigin.north_mm);
   int x = abs(destination->east_mm  - roadDestination.east_mm)  + abs(destination->north_mm - roadDestination.north_mm);
 
   int straight_dist = 190 * abs(start->east_mm  - destination->east_mm) +  abs(start->north_mm - destination->north_mm);
@@ -742,11 +694,11 @@ int PlanPath (waypoint *start, waypoint *destination) {
   }
   else {  // use A* with the road network
     Serial.println("In Else");
-    path[1] = roadOrigin;
+    path[1] = roadorigin;
     path[1].index = 1;
     //why index = 7?
     destination -> index = 7;
-    last = FindPath(&roadOrigin, &roadDestination);
+    last = FindPath(&roadorigin, &roadDestination);
   }
 
   path[last] = destination;
@@ -774,7 +726,6 @@ boolean LoadMap(char* fileName) {
 
   // if the file opened okay, read from it:
   if (myFile) {
-    Serial.println("loading nearest Map....");
     // Initialize a string buffer to read lines from the file into
     // Allocate an extra char at the end to add null terminator
     char* buffer = (char*)malloc(myFile.size() + 1);
@@ -797,11 +748,8 @@ boolean LoadMap(char* fileName) {
     int row = 0;
 
     // get the first token
-    Serial.println(token);
     token = strtok(buffer, delimiter);
-    Serial.println("got first token");
-    Serial.println(token);
-
+  
     // walk through other tokens
     while ( token != NULL ) {
       switch (col % 10) {
@@ -874,8 +822,8 @@ boolean LoadMap(char* fileName) {
         case 9:  // filename
           Nodes[row].Distance[3] = atol(token);
 
-          //check this method
-          convertLatLonToMM(Nodes[row].east_mm, Nodes[row].north_mm);
+          //this method below needs to be looked at in Common.cpp 
+          //convertLatLonToMM(Nodes[row].east_mm, Nodes[row].north_mm);
           col++;
           row++;
           break;
@@ -1022,22 +970,11 @@ void SelectMap(waypoint currentLocation, char* fileName, char* nearestMap)
       }
       token = strtok(NULL, delimiter);
     }
-    float currentLat = currentLocation.latitude / 1000000.0;
-    while (currentLat > 100) {
-      currentLat /= 10;
-    }
-    float currentLong = currentLocation.longitude / 1000000.0;
-    while (abs(currentLong) > 1000) {
-      currentLong /= 10;
-    }
-    //Serial.println(currentLat, 8);
-    //Serial.println(currentLong, 8);
-
     int closestIndex = -1;
     long closestDistance = MAX_DISTANCE;
     for (int i = 0; i < MAX_MAPS; i++)  {
-      int dist = fabs((map_latitudes[i] - currentLat)) +
-                 abs(map_longitudes[i] - currentLong);
+      int dist = fabs((map_latitudes[i] - currentLocation.latitude)) +
+                 abs(map_longitudes[i] - currentLocation.longitude);
       if (dist < closestDistance) {
         closestIndex = i;
         closestDistance = dist;
@@ -1045,9 +982,9 @@ void SelectMap(waypoint currentLocation, char* fileName, char* nearestMap)
     }
     if (closestIndex >= 0)  {
       // Determine closest map to current location
-      // Update Origin global variable
-      Origin.latitude = map_latitudes[closestIndex];
-      Origin.longitude = map_longitudes[closestIndex];
+      // Update origin global variable
+      origin.latitude = map_latitudes[closestIndex];
+      origin.longitude = map_longitudes[closestIndex];
       for (int i = 0; i < 13; i++)
       {
         nearestMap[i] = map_file_names[closestIndex][i];
@@ -1076,28 +1013,12 @@ void SelectMap(waypoint currentLocation, char* fileName, char* nearestMap)
 
 /*---------------------------------------------------------------------------------------*/
 void initialize_C4() {
-  int last;
-  Origin.Evector_x1000 = INVALID;
-  Origin.Nvector_x1000 = INVALID;
-  Origin.east_mm = 0;
-  Origin.north_mm = 0;
-  Origin.latitude = INVALID;
-  Origin.longitude = INVALID;
-
-  Start.east_mm = 0;
-  Start.north_mm = 0;
-
   //Store the initial GPS latitude and longtitude to select the correct map
   Start.latitude = estimated_position.latitude;
   Start.longitude = estimated_position.longitude;
 
-  Serial.print("Start latitude: ");
-  Serial.println(Start.latitude);
-  Serial.print("Start longitude: ");
-  Serial.println(Start.longitude);
-
   Serial.println("Initializing SD card...");
-  pinMode(SS, OUTPUT);
+  pinMode(chipSelect, OUTPUT);
 
   if (!SD.begin(chipSelect)) {
     Serial3.println("initialization failed!");
@@ -1105,20 +1026,16 @@ void initialize_C4() {
   Serial.println("initialization done.");
   char nearestMap[13] = "";
 
-  SelectMap(Start, "MAP_DEFS.txt", nearestMap); //populates info from map_def to nearestMap
-  Serial.println("SelectMap done");
+  SelectMap(Start, "MAP_DEFS.txt", nearestMap); //populates info from map_def to nearestMap;
 
-  Serial.print("Nearest Map: ");
-  Serial.println(nearestMap);
+  //Serial.println(nearestMap);
 
   //populate nearest map in junction Nodes structure
   LoadMap(nearestMap);
-  Serial.println("Finished LoadingMap");
 
   //takes in the Nodes that contains all of the map
   ConstructNetwork(Nodes, map_points); //To fill out the rest of the nodes info
-  /* Convert latitude and longitude positions to flat earth coordinates.
-     Fill in waypoint structure  */
+
   GetGoals(Nodes, CONES);
 }
 
@@ -1145,21 +1062,15 @@ void test_distance()  {
   Serial.println("dist " + String(dist));
 }
 void setup_C4() {
-  Serial.println("C4 setup");
-  Serial.println("Start C4 setup");
-  DataAvailable = true; //false
-
-  initialize_C4();
-
-  //why setting this to the the first junction of the map??
-  Start.east_mm = Nodes[0].east_mm;//Path[last].east_mm;
+  initialize_C4(); //Start selecting/load map and start planning path 
+  
+  //set the Start to the first Node
+  Start.east_mm = Nodes[0].east_mm;
   Start.north_mm = Nodes[0].north_mm;
 
   Serial.println("Start planning path");
-  //make this a global variable
   last_index_of_path = PlanPath (&Start, &mission[0]);
-  Serial.println("Finish C4 setup");
-
+  
 }
 
 /*---------------------------------------------------------------------------------------*/
@@ -1167,29 +1078,23 @@ void setup_C4() {
    All the Methods for C3 starts here
 */
 /*---------------------------------------------------------------------------------------*/
-/**This method computes the turning radius for the trike
-  by taking in the speed
-
-  param : speed_mmPs
-  return : turning radius
-*/
-long turning_radius_mm(long speed_mmPs) {
-  return 2 * MIN_TURNING_RADIUS;
+//setup Elcano serial communication for sending data to C2
+//Sending speed_mmps that you want to go at, and turn angle for direction
+void C3_communication_with_C2() {
+  //Setting up for sending data form C3 to C2
+  ps3.dt = &SendData;
+  ps3.input = &Serial2; //connection to read from
+  ps3.output = &Serial2; //connection to write to
+  ps3.capture = MsgType::drive;
+  SendData.clear();
 }
 
 /**
-   The method finds the trike position on the path and compute
-   the distance from the intersection you are currently approaching
-
-   param : n = next -> the index of the intersection you're approaching
-   return : distance
+   This method computes the turning radius for the trike
+   by taking in the speed
 */
-long findDistance(int n) {
-  long north_distance = ((estimated_position.north_mm - path[n].north_mm) * (estimated_position.north_mm - path[n].north_mm));
-  long east_distance = ((estimated_position.east_mm - path[n].east_mm) * (estimated_position.east_mm - path[n].east_mm));
-  long distance = sqrt(north_distance + east_distance);
-
-  return distance;
+long turning_radius_mm(long speed_mmPs) {
+  return 2 * MIN_TURNING_RADIUS;
 }
 
 /**
@@ -1284,9 +1189,6 @@ bool test_leave_intersection(long turning_radius_mm, int n) {
 */
 void find_state(long turn_radius_mm, int n) {
 
-  //setting the speed to default
-  speed_mmPs = default_speed_mmPs;
-
   switch (state) {
     case STRAIGHT:
       if (test_approach_intersection(turn_radius_mm, n)) {
@@ -1324,10 +1226,11 @@ void find_state(long turn_radius_mm, int n) {
       case APPROACH_GOAL:
         if (test_past_destination(n)) {
           state = STOP;
+          speed_mmPs = 0;
         }
         else if (test_approach_intersection(turn_radius_mm, n)) {
           //changing to a slowwer speed
-          speed_mmPs = slow_speed_mmPs;
+          speed_mmPs = SLOW_SPEED_mmPs;
         }
         break;
 
@@ -1359,26 +1262,19 @@ int get_turn_direction_angle(int n) {
     return turn_direction_angle;
   }
 }
+
 void setup_C3() {
-  Serial.println("Start up C3 setup");
+  //Serial.println("Start up C3 setup");
   //Trike state starts Straight
   state = STRAIGHT;
   //the path is set to approach the first intersection at index 1
   next = 1;
 
-  C3Results.clear();
-  Serial2.end();
-  Serial2.begin(baudrate);
-  ps3.dt = &C3Results;
-  ps3.input = &Serial2; //connection to read from
-  ps3.output = &Serial2; //connection to write to
-  ps3.capture = MsgType::drive;
-
-  Serial.println("Finish up C3 setup");
+  //Setting up for sending data from C3 to C2
+  void C3_communication_with_C2();
 }
-void loop_C3() {
 
-  Serial.println("Start of C3 loop");
+void loop_C3() {
 
   //Getting the turning radius
   long turn_radius_mm = turning_radius_mm(speed_mmPs);
@@ -1386,55 +1282,59 @@ void loop_C3() {
   //Determining the state of the Trike
   find_state(turn_radius_mm, next);
 
-  //send this data to C2 and design a 3 LCD interface for C2
   //Determining the turn direction for the trike "left, right or straight"
-  long turn_direction_angle = get_turn_direction_angle(next);
+  turn_direction_angle = get_turn_direction_angle(next);
+
+
+  //Send speed and angle to C2 to diplay the Led on the test stance
+  //only send data to C2 if we get new data. Avoid sending the same data
+  if (pre_desired_speed != speed_mmPs || pre_turn_angle != scaleDownAngle(turn_direction_angle)) {
+    SendData.clear();
+    SendData.kind = MsgType::drive;
+    //chheck this
+    SendData.speed_mmPs = sendData(speed_mmPs);
+    SendData.angle_mDeg = scaleDownAngle(turn_direction_angle);
+    SendData.write(&Serial2);
+
+    pre_desired_speed = speed_mmPs;
+    pre_turn_angle = scaleDownAngle(turn_direction_angle);
+  }
 
   //If trike has reached goal
   //  Set desured speed to 0
 
-  //Send speed and angle to C2
-  C3Results.clear();
-  C3Results.kind = MsgType::drive;
-  C3Results.speed_cmPs = DESIRED_SPEED_mmPs;
-  C3Results.angle_mDeg = turn_direction_angle;
-  C3Results.write(&Serial2);
-
-  Serial.println("End of C3 loop");
-
 }
 void setup() {
-  setup_C6();
-  setup_C4();
-  setup_C3();
+  Serial.begin(9600);
+  Serial2.begin(9600);
 
+  setup_C6();
+  //hard-code path for C4
+  //populatePath();
+
+  //To test C4, uncomment setup_C4 along with -> path[MAX_WAYPOINT] and Origin origin up in the global variable 
+  //comment out -> path[3] and Origin origin(47.758949, -122.190746) in the global variables 
+  //setup_C4()
+  setup_C3();
 }
+
 void loop() {
-  Serial.println("In loop");
-  //start our timer
-  long time_start = millis();
+  // start our timer
+  //  long time_start = millis();
+
   loop_C6();
+  //future expansion 
   //if(too far off path)
   //recompute c4
   loop_C3();
-  long time_finish_loop = millis();
 
-  //find out our time
-  long time_elapsed = abs(time_finish_loop - time_start);
-  Serial.print("total loop time: ");
-  Serial.print(time_elapsed);
-  while (time_elapsed < 100) {
-    //ong time_to_delay = 100 - time_elapsed - 10;
-    //wait till the time that we set reach the end
-    //delay(time_to_delay);
-    time_finish_loop = millis();
-    time_elapsed = abs(time_finish_loop - time_start);
+  //  unsigned long time_finish_loop = millis();
+  //
+  //  //find out our time
+  //  unsigned long time_elapsed = abs(time_finish_loop - time_start);
+
+
+  //    while (time_elapsed < 100) {
+  //      time_finish_loop = millis();
+  //      time_elapsed = abs(time_finish_loop - time_start);
   }
-  Serial.print("total loop time: ");
-  Serial.println(time_elapsed);
-}
-
-
-
-
-
