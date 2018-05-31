@@ -49,9 +49,10 @@ long pre_desired_speed = 0;
 long turn_direction_angle = 0;
 long pre_turn_angle = 0;
 long extractSpeed = 0; //alternative to checksum since it's not implemented
+bool got_DR = false;
 
 //for calculating the E and N unit vector
-double delta_east, delta_north, distance;
+double delta_east, delta_north, vector_distance;
 
 junction Nodes[MAX_WAYPOINTS]; //Storing the loaded map
 
@@ -67,6 +68,7 @@ Origin origin(47.758949, -122.190746);
 SerialData ReceiveData, SendData;
 ParseState ps, ps3;
 
+int count = 0;
 /*---------------------------------------------------------------------------------------*/
 /**
    All C6 Methods start here
@@ -215,29 +217,30 @@ void setup_C6() {
 
   initial_position(); //getting your initial position from GPS
 
-  Serial.print("current east: "); Serial.println(estimated_position.east_mm);
-  Serial.print("current north: "); Serial.println(estimated_position.north_mm);
-  Serial.println();
+  //  Serial.print("current east: "); Serial.println(estimated_position.east_mm);
+  //  Serial.print("current north: "); Serial.println(estimated_position.north_mm);
+  //  Serial.println();
 
   //for recieving data from C2
   C6_communication_with_C2();
 }
 
 void loop_C6() {
+  got_DR = false;
   got_GPS = AcquireGPS(GPS_reading);
   //try to get a new GPS position
   if (got_GPS) {
     GPS_reading.Compute_mm(origin); // get north and east coordinates from origin
     GPS_reading.Compute_EandN_Vectors(getHeading()); //Get E and N vector
 
-    Serial.print("GPS east: "); Serial.println(GPS_reading.east_mm);
-    Serial.print("GPS north: "); Serial.println(GPS_reading.north_mm);
-    Serial.println();
+    //    Serial.print("GPS east: "); Serial.println(GPS_reading.east_mm);
+    //    Serial.print("GPS north: "); Serial.println(GPS_reading.north_mm);
+    //    Serial.println();
 
   }
   //get heading coordinates from the compass
-  current_heading = getHeading();
-  newPos.time_ms = millis();
+  //  current_heading = getHeading();
+  //  newPos.time_ms = millis();
 
   //Recieving data from C2 using Elcano_Serial
   ParseStateError r = ps.update();
@@ -246,60 +249,75 @@ void loop_C6() {
 
     //elecano serial doesn't have checksum, this will prevent crazy amount of acceleration
     //in less than a second
-    if (abs(extractSpeed - newPos.speed_mmPs) < 100)
+    if (abs(extractSpeed - newPos.speed_mmPs) < 50 && extractSpeed >= 0) {
       newPos.speed_mmPs = receiveData(ReceiveData.speed_mmPs); //extract data
-
+      current_heading = getHeading();
+      newPos.time_ms = millis();
+      got_DR = true;
+    }
     newPos.bearing_deg = current_heading;
 
-    //        Serial.print("speed from c2: "); Serial.print(newPos.speed_mmPs);
-    //       Serial.print(", angle from c2: "); Serial.println(ReceiveData.angle_mDeg);
+    Serial.println(newPos.speed_mmPs);
+    Serial.println(ReceiveData.angle_mDeg);
   }
 
   // calculate position using Dead Reckoning
   ComputePositionWithDR(oldPos, newPos);
 
-  if (got_GPS) { //got both GPS and DeadReckoning
-    Serial.println("using GPS/DR");
+  if (got_GPS && got_DR) { //got both GPS and DeadReckoning
+    //    Serial.println("GPS/DR");
 
     //to get an esitimation position average between the GPS and Dead Rekoning
     //estimated_position is updated to the current position inside this method
     FindFuzzyCrossPointXY(GPS_reading, newPos, estimated_position);
-    estimated_position.time_ms = newPos.time_ms;  //update time of that positon 
+    estimated_position.time_ms = newPos.time_ms;  //update time of that positon
 
     //calculating the E and N unit vectors
     //note: estimated_position is updated from above
     delta_east = estimated_position.east_mm - oldPos.east_mm;
     delta_north = estimated_position.north_mm - oldPos.north_mm;
-    distance = sqrt(delta_east * delta_east + delta_north * delta_north);
+    vector_distance = sqrt(delta_east * delta_east + delta_north * delta_north);
 
-    if (distance != 0) {
-      estimated_position.Evector_x1000 = 1000 * (delta_east / distance);
-      estimated_position.Nvector_x1000 = 1000 * (delta_north / distance);
+    if (vector_distance != 0) {
+      estimated_position.Evector_x1000 = 1000 * (delta_east / vector_distance);
+      estimated_position.Nvector_x1000 = 1000 * (delta_north / vector_distance);
     }
+    //update oldPos to current positon
+    oldPos = estimated_position;
+    Serial.println(estimated_position.east_mm);
+    //  Serial.print("new north: ");
+    Serial.println(estimated_position.north_mm);
   }
-  else { //Did not get a GPS reading and only got DeadReckoning
-    Serial.println("using DR");
+  else if (got_DR) { //Did not get a GPS reading and only got DeadReckoning
+    //    Serial.println("DR");
     //calculating the E and N unit vector
     delta_east = newPos.east_mm - oldPos.east_mm;
     delta_north = newPos.north_mm - newPos.north_mm;
-    distance = sqrt(delta_east * delta_east + delta_north * delta_north);
+    vector_distance = sqrt(delta_east * delta_east + delta_north * delta_north);
 
-    if (distance != 0) {
-      estimated_position.Evector_x1000 = 1000 * (delta_east / distance);
-      estimated_position.Nvector_x1000 = 1000 * (delta_north / distance);
+    if (vector_distance != 0) {
+      estimated_position.Evector_x1000 = 1000 * (delta_east / vector_distance);
+      estimated_position.Nvector_x1000 = 1000 * (delta_north / vector_distance);
     }
 
     //update new current positon
     estimated_position.east_mm = newPos.east_mm;
     estimated_position.north_mm = newPos.north_mm;
     estimated_position.time_ms = newPos.time_ms;
+    //update oldPos to current positon
+    oldPos = estimated_position;
+    //    Serial.println(estimated_position.east_mm);
+    //  Serial.print("new north: ");
+    //    Serial.println(estimated_position.north_mm);
+
   }
-  //update oldPos to current positon
-  oldPos = estimated_position;
-  
-  Serial.print("new east: "); Serial.println(estimated_position.east_mm);
-  Serial.print("new north: "); Serial.println(estimated_position.north_mm);
-  Serial.println();
+
+  //  Serial.print("new east: ");
+  //Serial.println(estimated_position.east_mm);
+  //  Serial.print("new north: ");
+  //Serial.println(estimated_position.north_mm);
+  //  Serial.println();
+
 }
 
 /*---------------------------------------------------------------------------------------*/
@@ -512,7 +530,8 @@ void loop_C3() {
   find_state(turn_radius_mm, next);
 
   //Determining the turn direction for the trike "left, right or straight"
-  turn_direction_angle = get_turn_direction_angle(next);
+  
+  //turn_direction_angle = get_turn_direction_angle(next);
 
 
   //Send speed and angle to C2 to diplay the Led on the test stance
@@ -547,7 +566,21 @@ void setup() {
 }
 
 void loop() {
-   
+  count++;
+  if (count == 50000) {
+    speed_mmPs = 2225; //8
+    turn_direction_angle = 40;
+  }
+  else if (count == 100000) {
+    speed_mmPs = 2800; //10
+    turn_direction_angle = 0;
+  }
+  else if (count == 150000) {
+    speed_mmPs = 1390;  //5
+    turn_direction_angle = -5;
+  }
+
+
   // start our timer
   //  long time_start = millis();
 
