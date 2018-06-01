@@ -102,17 +102,16 @@ void setup() {
     ReceiveData.clear();
 }
 
-void loop1() {
+void Receive_Data() {
 
   
     Serial.println(desired_speed);
     Serial.println(turn_angle);   
 }
 
-void loop2() {
+void Send_Data() {
   
     // Sending data 
-    // Update code here that does not depend on having received a data set
       SendData.clear(); 
       SendData.kind = MsgType::drive;
       SendData.speed_mmPs = sendData(SpeedCyclometer_mmPs);
@@ -126,10 +125,10 @@ void loop() {
     if (r == ParseStateError::success) {
       desired_speed = receiveData(ReceiveData.speed_mmPs); 
       turn_angle = ReceiveData.angle_mDeg; 
-       loop1();
+       Receive_Data();
     } 
 
-     loop2(); 
+     Send_Data(); 
 
      // Time at which this loop pass should end in order to maintain a
     // loop period of LOOP_TIME_MS.
@@ -272,5 +271,6 @@ void computeSpeed(struct hist *data) {
     return;
   }
 }
+
 
 
