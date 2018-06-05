@@ -33,14 +33,14 @@ States state;
 
 extern bool DataAvailable;
 bool got_GPS = false;
-const long turn_speed = 500;
-const long MIN_TURNING_RADIUS = 2400;
+const long turn_speed = 835;
+const long MIN_TURNING_RADIUS = 4000;
 long speed_mmPs = DESIRED_SPEED_mmPs;
 const unsigned long LoopPeriod = 100;  // msec
 
 int next = 1; //index to path in a list
 //last is the the last index of the Path/goal
-int last_index_of_path = 3; //hardcode path of the last index/dest to 3 [cur,loc1,loc2,goal]
+int last_index_of_path = 2; //hardcode path of the last index/dest to 3 [cur,loc1,loc2,goal]
 long current_heading = -1;
 //pre-defined goal/destination to get to
 long goal_lat[CONES] = {47760934};
@@ -48,8 +48,8 @@ long goal_lon[CONES] = { -122189963};
 long pre_desired_speed = 0;
 long turn_direction_angle = 0;
 long pre_turn_angle = 0;
-long extractSpeed = 0; //alternative to checksum since it's not implemented
-bool got_DR = false;
+long extractSpeed = 0; //alternative to checksum since it's not implemented ie check for bad incoming data through serial 
+long turn_radius_mm = 4000;
 
 //for calculating the E and N unit vector
 double delta_east, delta_north, vector_distance;
@@ -57,7 +57,8 @@ double delta_east, delta_north, vector_distance;
 junction Nodes[MAX_WAYPOINTS]; //Storing the loaded map
 
 //waypoint path[MAX_WAYPOINTS];  // course route to goal/mission
-waypoint path[3];
+waypoint path[4];
+waypoint path0, path1, path2, path3;
 
 waypoint mission[CONES]; //The taget node to reach/goal
 waypoint GPS_reading, estimated_position, oldPos, newPos, fuzzy_out, Start;
@@ -68,39 +69,48 @@ Origin origin(47.758949, -122.190746);
 SerialData ReceiveData, SendData;
 ParseState ps, ps3;
 
-int count = 0;
+/*---------------------------------------------------------------------------------------*/
+/**
+   Methods for hardcoding the path in place of C4
+*/
+/*---------------------------------------------------------------------------------------*/
+void find_direction_vector(waypoint &start_pos, waypoint &end_pos) {
+  double deltaX = end_pos.east_mm - start_pos.east_mm;
+  double deltaY = end_pos.north_mm - start_pos.north_mm;
+
+  double distance = sqrt((deltaX * deltaX) + (deltaY * deltaY));
+
+  start_pos.Evector_x1000 = 1000 * (deltaX / distance);
+  start_pos.Nvector_x1000 = 1000 * (deltaY / distance);
+
+}
+void populate_path() {
+
+
+  path0.east_mm = -9432;
+  path0.north_mm = -66564;
+
+  path1.east_mm = -15136;
+  path1.north_mm = -65716;
+
+  path2.east_mm = -17986;
+  path2.north_mm = -63170;
+
+  path[0] = path0;
+  path[1] = path1;
+  path[2] = path2;
+
+  for (int i = 0; i < 2; i++) {
+    find_direction_vector(path[i], path[i + 1]);
+  }
+
+}
+
 /*---------------------------------------------------------------------------------------*/
 /**
    All C6 Methods start here
 */
 /*---------------------------------------------------------------------------------------*/
-void populatePath() {
-  waypoint path0, path1, path2, path3;
-
-  //needs to get the heading for all
-  path0.latitude = 47.761116;
-  path0.longitude = -122.190283;
-  path0.Compute_mm(origin);
-
-  path1.latitude = 47.761076;
-  path1.longitude = -122.190266;
-  path1.Compute_mm(origin);
-
-  path2.latitude = 47.761043;
-  path2.longitude = -122.190218;
-  path2.Compute_mm(origin);
-
-
-  path3.latitude = 47.761091;
-  path3.longitude = -122.190218;
-  path3.Compute_mm(origin);
-
-  path[0] = path0;
-  path[1] = path1;
-  path[2] = path2;
-  path[3] = path3;
-
-}
 void setup_GPS() {
   //Serial 3 is used for GPS
   mySerial.begin(9600);
@@ -140,16 +150,8 @@ bool AcquireGPS(waypoint &gps_position) {
       return false;  // we can fail to parse a sentence in which case we should just wait for another
 
     if (GPS.fix) {
-
-
       gps_position.latitude = GPS.latitudeDegrees;
       gps_position.longitude = GPS.longitudeDegrees;
-
-      //      Serial.println(GPS.latitudeDegrees, 6);
-      //      Serial.println(GPS.longitudeDegrees, 6);
-
-
-
 
       return true;
     }
@@ -215,18 +217,25 @@ void setup_C6() {
   }
   mag.begin();
 
-  initial_position(); //getting your initial position from GPS
+  //commented out for hardcode testing of exact start location of the path below
+  //initial_position(); //getting your initial position from GPS
 
-  //  Serial.print("current east: "); Serial.println(estimated_position.east_mm);
-  //  Serial.print("current north: "); Serial.println(estimated_position.north_mm);
-  //  Serial.println();
+  //hard code for testing the exact start positon in the path 
+  estimated_position.time_ms = millis();
+  estimated_position.east_mm = -9432;
+  estimated_position.north_mm = -66564;
+  estimated_position.Evector_x1000 = path[0].Evector_x1000;
+  estimated_position.Nvector_x1000 = path[0].Nvector_x1000;
+
+  //oldPos to keep track of previous position for DR
+  oldPos = estimated_position;
 
   //for recieving data from C2
   C6_communication_with_C2();
 }
 
 void loop_C6() {
-  got_DR = false;
+
   got_GPS = AcquireGPS(GPS_reading);
   //try to get a new GPS position
   if (got_GPS) {
@@ -237,34 +246,31 @@ void loop_C6() {
     //    Serial.print("GPS north: "); Serial.println(GPS_reading.north_mm);
     //    Serial.println();
 
-  }
-  //get heading coordinates from the compass
-  //  current_heading = getHeading();
-  //  newPos.time_ms = millis();
-
+  } 
+  //time captured for computing new distance 
+  newPos.time_ms = millis();
+  
   //Recieving data from C2 using Elcano_Serial
   ParseStateError r = ps.update();
   if (r == ParseStateError::success)  {
     extractSpeed = receiveData(ReceiveData.speed_mmPs);
+    
+    if (extractSpeed != -1) { //invalid data from C2 if it's -1
+      //speed cannot be below 0
+      if  (extractSpeed >= 0) {
+        newPos.speed_mmPs = extractSpeed; //extract data
+      }
 
-    //elecano serial doesn't have checksum, this will prevent crazy amount of acceleration
-    //in less than a second
-    if (abs(extractSpeed - newPos.speed_mmPs) < 50 && extractSpeed >= 0) {
-      newPos.speed_mmPs = receiveData(ReceiveData.speed_mmPs); //extract data
-      current_heading = getHeading();
-      newPos.time_ms = millis();
-      got_DR = true;
     }
-    newPos.bearing_deg = current_heading;
-
-    Serial.println(newPos.speed_mmPs);
-    Serial.println(ReceiveData.angle_mDeg);
+    //Serial.println(newPos.speed_mmPs);
   }
-
+  //get heading coordinates from the compass
+  newPos.bearing_deg = getHeading();
+  
   // calculate position using Dead Reckoning
   ComputePositionWithDR(oldPos, newPos);
 
-  if (got_GPS && got_DR) { //got both GPS and DeadReckoning
+  if (got_GPS) { //got both GPS and DeadReckoning
     //    Serial.println("GPS/DR");
 
     //to get an esitimation position average between the GPS and Dead Rekoning
@@ -282,17 +288,13 @@ void loop_C6() {
       estimated_position.Evector_x1000 = 1000 * (delta_east / vector_distance);
       estimated_position.Nvector_x1000 = 1000 * (delta_north / vector_distance);
     }
-    //update oldPos to current positon
-    oldPos = estimated_position;
-    Serial.println(estimated_position.east_mm);
-    //  Serial.print("new north: ");
-    Serial.println(estimated_position.north_mm);
   }
-  else if (got_DR) { //Did not get a GPS reading and only got DeadReckoning
+  else { //Did not get a GPS reading and only DeadReckoning
     //    Serial.println("DR");
+    
     //calculating the E and N unit vector
     delta_east = newPos.east_mm - oldPos.east_mm;
-    delta_north = newPos.north_mm - newPos.north_mm;
+    delta_north = newPos.north_mm - oldPos.north_mm;
     vector_distance = sqrt(delta_east * delta_east + delta_north * delta_north);
 
     if (vector_distance != 0) {
@@ -304,20 +306,9 @@ void loop_C6() {
     estimated_position.east_mm = newPos.east_mm;
     estimated_position.north_mm = newPos.north_mm;
     estimated_position.time_ms = newPos.time_ms;
-    //update oldPos to current positon
-    oldPos = estimated_position;
-    //    Serial.println(estimated_position.east_mm);
-    //  Serial.print("new north: ");
-    //    Serial.println(estimated_position.north_mm);
-
   }
-
-  //  Serial.print("new east: ");
-  //Serial.println(estimated_position.east_mm);
-  //  Serial.print("new north: ");
-  //Serial.println(estimated_position.north_mm);
-  //  Serial.println();
-
+  //update oldPos to current positon
+  oldPos = estimated_position;
 }
 
 /*---------------------------------------------------------------------------------------*/
@@ -338,10 +329,11 @@ void C3_communication_with_C2() {
 
 /**
    This method computes the turning radius for the trike
+   Not using the speed at the moment. Needs improvment for futher development
    by taking in the speed
 */
 long turning_radius_mm(long speed_mmPs) {
-  return 2 * MIN_TURNING_RADIUS;
+  return  MIN_TURNING_RADIUS; //4000mm or 4m
 }
 
 /**
@@ -357,16 +349,13 @@ bool test_past_destination(int n) {
   if (abs(path[n - 1].east_mm - path[n].east_mm) > abs(path[n - 1].north_mm - path[n].north_mm)) {
     if (path[n].east_mm > path[n - 1].east_mm && estimated_position.east_mm > path[n].east_mm) {
       return true;
-    }
-    else if (path[n - 1].east_mm < path[n].east_mm && estimated_position.east_mm < path[n].east_mm) {
+    } else if (path[n - 1].east_mm > path[n].east_mm && estimated_position.east_mm < path[n].east_mm) {
       return true;
     }
-  }
-  else {
+  } else {
     if (path[n].north_mm > path[n - 1].north_mm && estimated_position.north_mm > path[n].north_mm) {
       return true;
-    }
-    else if (path[n - 1].north_mm < path[n].north_mm && estimated_position.north_mm < path[n].north_mm) {
+    } else if (path[n - 1].north_mm > path[n].north_mm && estimated_position.north_mm < path[n].north_mm) {
       return true;
     }
   }
@@ -382,18 +371,18 @@ bool test_past_destination(int n) {
 */
 bool test_approach_intersection(long turn_radius_mm, int n) {
   if (abs(path[n - 1].east_mm - path[n].east_mm) > abs(path[n - 1].north_mm - path[n].north_mm)) {
-    if (path[n].east_mm > path[n - 1].east_mm && estimated_position.east_mm > path[n].east_mm + turn_radius_mm) {
+    if (path[n].east_mm > path[n - 1].east_mm && estimated_position.east_mm >= path[n].east_mm - turn_radius_mm) {
+      return true;
+    } else if (path[n - 1].east_mm > path[n].east_mm &&
+               estimated_position.east_mm <= path[n].east_mm + turn_radius_mm) {
       return true;
     }
-    else if (path[n - 1].east_mm < path[n].east_mm && estimated_position.east_mm < path[n].east_mm - turn_radius_mm) {
+  } else {
+    if (path[n].north_mm > path[n - 1].north_mm &&
+        estimated_position.north_mm >= path[n].north_mm - turn_radius_mm) {
       return true;
-    }
-  }
-  else {
-    if (path[n].north_mm > path[n - 1].north_mm && estimated_position.north_mm > path[n].north_mm + turn_radius_mm) {
-      return true;
-    }
-    else if (path[n - 1].north_mm < path[n].north_mm && estimated_position.north_mm < path[n].north_mm - turn_radius_mm) {
+    } else if (path[n - 1].north_mm > path[n].north_mm &&
+               estimated_position.north_mm <= path[n].north_mm + turn_radius_mm) {
       return true;
     }
   }
@@ -428,6 +417,32 @@ bool test_leave_intersection(long turning_radius_mm, int n) {
 }
 
 /**
+   This method determines the direction of turns of the vehicle
+   in degrees
+
+   param : n = next -> index of the intersection you're approaching
+   return : pos = right, neg = left, 0 = straight
+*/
+int get_turn_direction_angle(int n) {
+  if (state == ENTER_TURN) {
+    int direction_angle = 0;
+    double turn_direction = (estimated_position.Evector_x1000 * path[n].Evector_x1000) + (estimated_position.Nvector_x1000 * path[n].Nvector_x1000);
+    double x_magnitude = sqrt((estimated_position.Evector_x1000 * estimated_position.Evector_x1000) + (estimated_position.Nvector_x1000 * estimated_position.Nvector_x1000));
+    double y_magnitude = sqrt ((path[n].Evector_x1000 * path[n].Evector_x1000) + (path[n].Nvector_x1000 * path[n].Nvector_x1000));
+    double dot_product = (turn_direction / (x_magnitude * y_magnitude));
+    dot_product /= 1000000.0;
+    turn_direction = acos(dot_product); // angle in radians
+    double cross = (estimated_position.Evector_x1000 * path[n].Nvector_x1000) - (estimated_position.Nvector_x1000 * path[n].Evector_x1000);
+    direction_angle = turn_direction * 180 / PIf; //angle is degrees
+    if (cross > 0)
+      direction_angle = -direction_angle;
+
+    return direction_angle;
+  }
+  return 0;
+}
+
+/**
    The method find and set the state of the trike and
    also set the speed of the trike depending on the state it's in
 
@@ -438,80 +453,46 @@ void find_state(long turn_radius_mm, int n) {
 
   switch (state) {
     case STRAIGHT:
+      Serial.println("straight");
+      speed_mmPs = DESIRED_SPEED_mmPs;
       if (test_approach_intersection(turn_radius_mm, n)) {
-        //Needs to find the last index of path
+        //last index of path/goal
         if (n == last_index_of_path) {
           state = APPROACH_GOAL;
         }
         else {
           state = ENTER_TURN;
+          Serial.println("E_T");
         }
-        break;
-
-      case STOP:
-        break;
-
-      case ENTER_TURN:
-        //setting to turning speed
-        speed_mmPs = turn_speed;
-
-        if (test_past_destination(n)) {
-          state = LEAVE_TURN;
-          next++;
-
-        }
-        break;
-
-      case LEAVE_TURN:
-        //setting to turning speed
-        speed_mmPs = turn_speed;
-        if (test_leave_intersection(turn_radius_mm, n)) {
-          state = STRAIGHT;
-        }
-        break;
-
-      case APPROACH_GOAL:
-        if (test_past_destination(n)) {
-          state = STOP;
-          speed_mmPs = 0;
-        }
-        else if (test_approach_intersection(turn_radius_mm, n)) {
-          //changing to a slowwer speed
-          speed_mmPs = SLOW_SPEED_mmPs;
-        }
-        break;
-
-      case LEAVE_GOAL:
-        break;
       }
+      break;
+
+    case STOP:
+      speed_mmPs = 0;
+      break;
+
+    case ENTER_TURN:
+      Serial.println("inside E_T");
+      //setting to turning speed
+      speed_mmPs = turn_speed;
+
+      if (abs(turn_direction_angle) <= 10) {
+        state = STRAIGHT;
+        next++;
+
+      }
+      break;
+
+    case APPROACH_GOAL:
+      if (test_past_destination(n)) {
+        state = STOP;
+      }
+      break;
   }
 
-}
-
-/**
-   This method determines the direction of turns of the vehicle
-   in degrees
-
-   param : n = next -> index of the intersection you're approaching
-   return : pos = right, neg = left, 0 = straight
-*/
-int get_turn_direction_angle(int n) {
-  if (state == ENTER_TURN || state == LEAVE_TURN) {
-    float turn_direction = (estimated_position.Evector_x1000 * path[n].Evector_x1000) + (estimated_position.Nvector_x1000 * path[n].Nvector_x1000);
-    int turn_direction_angle = 0;
-    turn_direction /= 1000000.0;
-    turn_direction = acos(turn_direction); // angle in radians
-    float cross = (estimated_position.Evector_x1000 * path[n].Nvector_x1000) - (estimated_position.Nvector_x1000 * path[n].Evector_x1000);
-    turn_direction_angle = turn_direction * 180 / PI; //angle is degrees
-    if (cross < 0)
-      turn_direction_angle = -turn_direction_angle;
-
-    return turn_direction_angle;
-  }
 }
 
 void setup_C3() {
-  //Serial.println("Start up C3 setup");
   //Trike state starts Straight
   state = STRAIGHT;
   //the path is set to approach the first intersection at index 1
@@ -523,15 +504,13 @@ void setup_C3() {
 
 void loop_C3() {
 
-  //Getting the turning radius
-  long turn_radius_mm = turning_radius_mm(speed_mmPs);
-
   //Determining the state of the Trike
   find_state(turn_radius_mm, next);
 
   //Determining the turn direction for the trike "left, right or straight"
-  
-  //turn_direction_angle = get_turn_direction_angle(next);
+  turn_direction_angle = get_turn_direction_angle(next);
+  Serial.print("T_D_A: ");
+  Serial.println(turn_direction_angle);
 
 
   //Send speed and angle to C2 to diplay the Led on the test stance
@@ -548,9 +527,6 @@ void loop_C3() {
     pre_turn_angle = scaleDownAngle(turn_direction_angle);
   }
 
-  //If trike has reached goal
-  //  Set desured speed to 0
-
 }
 void setup() {
   //for the micro SD
@@ -559,33 +535,22 @@ void setup() {
   Serial.begin(9600);
   Serial2.begin(9600);
 
+  populate_path(); //hard code path in replacement of C4
   setup_C6();
-  //hard-code path for C4
-  //populatePath();
   setup_C3();
 }
 
 void loop() {
-  count++;
-  if (count == 50000) {
-    speed_mmPs = 2225; //8
-    turn_direction_angle = 40;
-  }
-  else if (count == 100000) {
-    speed_mmPs = 2800; //10
-    turn_direction_angle = 0;
-  }
-  else if (count == 150000) {
-    speed_mmPs = 1390;  //5
-    turn_direction_angle = -5;
-  }
-
-
   // start our timer
   //  long time_start = millis();
 
   loop_C6();
+  Serial.print("E");
+  Serial.println(estimated_position.east_mm);
+  Serial.println(estimated_position.north_mm);
   loop_C3();
+
+  delay(25);
 
   //  unsigned long time_finish_loop = millis();
   //
