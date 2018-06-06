@@ -49,28 +49,28 @@ long sendData (long number_Sent){
 
 // Scaling down of the turning angle
 int scaleDownAngle (long angle){
-    if(angle >= -2 && angle <= 2)
+    if(angle >= -25 && angle <= 25)
         return 4;
     
-    else if(angle > 2 && angle <= 5)
+    else if(angle > 25 && angle <= 40)
         return 5;
     
-    else if (angle > 5 && angle <= 7)
+    else if (angle > 40 && angle <= 55)
         return 6;
     
-    else if (angle > 7 && angle <= 10)
+    else if (angle > 55 && angle <= 70)
         return 7;
     
-    else if (angle >10)
+    else if (angle >70)
         return 8;
     
-    else if(angle < -2 && angle >= -5)
+    else if(angle < -25 && angle >= -40)
         return 3;
     
-    else if(angle < -5 && angle >= -7)
+    else if(angle < -40 && angle >= -55)
         return 2;
     
-    else if(angle < -7 && angle >= -10)
+    else if(angle < -55 && angle >= -70)
         return 1;
     
     else
