@@ -58,7 +58,7 @@ waypoint path[4];
 waypoint path0, path1, path2, path3;
 
 waypoint mission[CONES]; //The taget node to reach/goal
-waypoint GPS_reading, estimated_position, oldPos, newPos, fuzzy_out, Start;
+waypoint GPS_reading, estimated_position, oldPos, newPos, Start;
 
 //origin is set to the UWB map
 Origin origin(47.758949, -122.190746);
