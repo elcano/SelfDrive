@@ -40,7 +40,7 @@ const unsigned long LoopPeriod = 100;  // msec
 
 int next = 1; //index to path in a list
 //last is the the last index of the Path/goal
-int last_index_of_path = 2; //hardcode path of the last index/dest to 3 [cur,loc1,loc2,goal]
+int last_index_of_path = 2; //hardcode path of the last index/dest to 3 [cur,loc1,goal]
 long current_heading = -1;
 //pre-defined goal/destination to get to
 long goal_lat[CONES] = {47760934};
