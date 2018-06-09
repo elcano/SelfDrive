@@ -31,7 +31,6 @@ States state;
 #define currentlocation  -1 //currentLocation
 #define CONES 1
 
-int Got_DR = false;
 extern bool DataAvailable;
 bool got_GPS = false;
 const long turn_speed = 835;
@@ -50,7 +49,7 @@ long pre_desired_speed = 0;
 long turn_direction = 0;
 long pre_turn_angle = 0;
 long extractSpeed = 0; //alternative to checksum since it's not implemented ie check for bad incoming data through serial
-long turn_radius_mm = 1000;
+long turn_radius_mm = 2000;
 
 //for calculating the E and N unit vector
 double delta_east, delta_north, vector_distance;
