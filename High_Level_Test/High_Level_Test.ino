@@ -51,9 +51,6 @@ long pre_turn_angle = 0;
 long extractSpeed = 0; //alternative to checksum since it's not implemented ie check for bad incoming data through serial
 long turn_radius_mm = 2000;
 
-//for calculating the E and N unit vector
-double delta_east, delta_north, vector_distance;
-
 junction Nodes[MAX_WAYPOINTS]; //Storing the loaded map
 
 //waypoint path[MAX_WAYPOINTS];  // course route to goal/mission
